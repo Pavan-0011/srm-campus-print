@@ -13,13 +13,13 @@ import { ReceiptModal } from './components/ReceiptModal';
 import { HelpSupportModal } from './components/HelpSupportModal';
 import { ProfileModal } from './components/ProfileModal';
 import { PrintOrder, UserProfile, NotificationItem } from './types';
-import { initialUser, initialOrders, mockNotifications } from './data/mockData';
+import { initialOrders, mockNotifications } from './data/mockData';
 import { Menu } from 'lucide-react';
 
 export const App: React.FC = () => {
-  // Authentication State (Email + OTP, single user login)
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
-  const [user, setUser] = useState<UserProfile>(initialUser);
+  // Authentication State: MUST be false initially so every user sees the Login page!
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<UserProfile | null>(null);
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
@@ -57,6 +57,7 @@ export const App: React.FC = () => {
 
   const handleLogout = () => {
     setIsAuthenticated(false);
+    setUser(null);
   };
 
   const handleStartNewOrder = (preset?: Partial<PrintOrder>) => {
@@ -70,10 +71,8 @@ export const App: React.FC = () => {
   };
 
   const handlePaymentSuccess = (newOrder: PrintOrder) => {
-    // Add new order
     setOrders((prev) => [newOrder, ...prev]);
 
-    // Create notification
     const newNotif: NotificationItem = {
       id: `notif-${Date.now()}`,
       title: 'PhonePe Payment Verified! 🖨️',
@@ -85,15 +84,13 @@ export const App: React.FC = () => {
     };
     setNotifications((prev) => [newNotif, ...prev]);
 
-    // If paid via Campus Cash, deduct balance
-    if (newOrder.paymentMethod?.includes('Campus Cash')) {
-      setUser((prev) => ({
-        ...prev,
-        campusCashBalance: Math.max(0, prev.campusCashBalance - newOrder.cost)
-      }));
+    if (newOrder.paymentMethod?.includes('Campus Cash') && user) {
+      setUser({
+        ...user,
+        campusCashBalance: Math.max(0, user.campusCashBalance - newOrder.cost)
+      });
     }
 
-    // Switch view to My Orders
     setActiveTab('my-orders');
     setOrdersFilter('all');
   };
@@ -149,10 +146,11 @@ export const App: React.FC = () => {
   };
 
   const handleAddCampusCash = (amount: number) => {
-    setUser((prev) => ({
-      ...prev,
-      campusCashBalance: prev.campusCashBalance + amount
-    }));
+    if (!user) return;
+    setUser({
+      ...user,
+      campusCashBalance: user.campusCashBalance + amount
+    });
   };
 
   const activeOrdersCount = orders.filter(
@@ -161,8 +159,8 @@ export const App: React.FC = () => {
 
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
 
-  // Single User Authentication with Real Email & OTP
-  if (!isAuthenticated) {
+  // If not authenticated, render Login Screen
+  if (!isAuthenticated || !user) {
     return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
@@ -262,7 +260,6 @@ export const App: React.FC = () => {
       </div>
 
       {/* Global Modals */}
-      {/* Real PhonePe QR & UTR Payment Gateway Modal */}
       <PaymentModal
         isOpen={paymentModalOpen}
         orderData={pendingOrderData}
@@ -272,7 +269,6 @@ export const App: React.FC = () => {
         onViewReceipt={handleDownloadReceipt}
       />
 
-      {/* Order Tracking Modal */}
       <TrackingModal
         isOpen={trackingModalOpen}
         order={selectedOrderForTracking}
@@ -280,7 +276,6 @@ export const App: React.FC = () => {
         onViewReceipt={handleDownloadReceipt}
       />
 
-      {/* Official Tax Invoice / Receipt Modal */}
       <ReceiptModal
         isOpen={receiptModalOpen}
         order={selectedOrderForReceipt}
@@ -288,13 +283,11 @@ export const App: React.FC = () => {
         onClose={() => setReceiptModalOpen(false)}
       />
 
-      {/* Help & Support Modal */}
       <HelpSupportModal
         isOpen={helpModalOpen}
         onClose={() => setHelpModalOpen(false)}
       />
 
-      {/* Student Profile Modal */}
       <ProfileModal
         isOpen={profileModalOpen}
         user={user}

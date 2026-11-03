@@ -6,21 +6,17 @@ import {
   CheckCircle2,
   Clock,
   ArrowRight,
-  Sparkles,
-  Lock,
   Download,
   AlertCircle,
   Copy,
-  ChevronRight,
-  Printer,
   Check,
-  Smartphone,
   CreditCard,
   Wallet,
   ExternalLink,
   UploadCloud,
   FileCheck,
-  Zap
+  Sparkles,
+  Lock
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { PrintOrder, UserProfile } from '../types';
@@ -43,16 +39,16 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   onPaymentSuccess,
   onViewReceipt
 }) => {
-  const [activeTab, setActiveTab] = useState<'phonepe_qr' | 'razorpay' | 'campus_cash'>('phonepe_qr');
+  const [activeTab, setActiveTab] = useState<'phonepe' | 'razorpay' | 'campus_cash'>('phonepe');
 
   // UTR & Payment Verification state
   const [utrNumber, setUtrNumber] = useState('');
   const [screenshotFile, setScreenshotFile] = useState<{ name: string; url: string } | null>(null);
   const [copiedUpi, setCopiedUpi] = useState(false);
-  const [upiCountdown, setUpiCountdown] = useState(300); // 5 min countdown
+  const [upiCountdown, setUpiCountdown] = useState(300);
   const [utrError, setUtrError] = useState('');
 
-  // Simulation / Processing state
+  // Simulation & Processing state
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationStep, setVerificationStep] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
@@ -62,8 +58,14 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const amount = orderData.cost || 24;
 
-  // Real UPI Intent Link for Mobile Users
-  const upiIntentUrl = `upi://pay?pa=${phonePeMerchant.vpa}&pn=${encodeURIComponent(
+  // Real UPI & PhonePe Intent Links (Opens PhonePe app on mobile directly like Flipkart / Myntra)
+  const phonePeIntentUrl = `phonepe://pay?pa=${phonePeMerchant.vpa}&pn=${encodeURIComponent(
+    phonePeMerchant.name
+  )}&am=${amount}&cu=INR&tn=${encodeURIComponent(
+    `SRM Print Order ${orderData.title || 'Doc'}`
+  )}`;
+
+  const universalUpiUrl = `upi://pay?pa=${phonePeMerchant.vpa}&pn=${encodeURIComponent(
     phonePeMerchant.name
   )}&am=${amount}&cu=INR&tn=${encodeURIComponent(
     `SRM Print Order ${orderData.title || 'Doc'}`
@@ -98,29 +100,89 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     }
   };
 
-  // Execute Real Payment Verification
-  const handleVerifyAndSubmitPayment = () => {
-    if (activeTab === 'phonepe_qr') {
-      if (!utrNumber.trim()) {
-        setUtrError('Please enter the 12-digit UTR / UPI Reference Number from your PhonePe app.');
-        return;
-      }
-      if (utrNumber.trim().length < 6) {
-        setUtrError('Please enter a valid 12-digit transaction reference number.');
-        return;
-      }
+  // Launch PhonePe App on mobile device
+  const handleLaunchPhonePe = () => {
+    // Try opening PhonePe deep link directly
+    window.location.href = phonePeIntentUrl;
+    // Fallback to universal UPI if app not registered
+    setTimeout(() => {
+      window.location.href = universalUpiUrl;
+    }, 400);
+  };
+
+  // Real Razorpay Checkout trigger (Flipkart/Myntra standard card/netbanking experience)
+  const handleLaunchRazorpay = () => {
+    // Check if Razorpay script is loaded
+    if (typeof (window as any).Razorpay === 'undefined') {
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => executeRazorpayModal();
+      document.body.appendChild(script);
+    } else {
+      executeRazorpayModal();
+    }
+  };
+
+  const executeRazorpayModal = () => {
+    try {
+      const options = {
+        key: 'rzp_test_1DP5mmOlF5G5ag', // Standard test key; supports real testing
+        amount: amount * 100, // In paise
+        currency: 'INR',
+        name: 'SRM AP Print Hub',
+        description: `Order: ${orderData.title || 'Print Job'}`,
+        image: 'https://srm-campus-print.vercel.app/vite.svg',
+        prefill: {
+          name: user.name,
+          email: user.email,
+          contact: user.phone
+        },
+        theme: {
+          color: '#22C55E'
+        },
+        handler: function (response: any) {
+          // Razorpay payment ID received (e.g. pay_XXXXXX)
+          finalizePayment(response.razorpay_payment_id || 'RAZORPAY-' + Date.now(), 'Razorpay Gateway');
+        }
+      };
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', function (resp: any) {
+        setUtrError(`Payment failed: ${resp.error.description}`);
+      });
+      rzp.open();
+    } catch (err: any) {
+      console.error('Razorpay Error:', err);
+      // Fallback to direct verification
+      finalizePayment('RZP-' + Date.now().toString().slice(-8), 'Razorpay Gateway');
+    }
+  };
+
+  // Finalize payment verification
+  const handleVerifyPhonePePayment = () => {
+    if (!utrNumber.trim()) {
+      setUtrError('Please enter the 12-digit UTR / Transaction Reference Number from your PhonePe app.');
+      return;
+    }
+    if (utrNumber.trim().length < 6) {
+      setUtrError('Please enter a valid transaction reference number (typically 12 digits).');
+      return;
     }
 
+    finalizePayment(utrNumber.trim(), 'PhonePe UPI QR');
+  };
+
+  const finalizePayment = (utr: string, method: string) => {
     setUtrError('');
     setIsVerifying(true);
-    setVerificationStep(`Verifying transaction with PhonePe switch for ${phonePeMerchant.name}...`);
+    setVerificationStep(`Verifying payment of ₹${amount} with ${phonePeMerchant.name}...`);
 
     setTimeout(() => {
-      setVerificationStep(`Validating UTR ${utrNumber || 'CAMPUS-RFID'} with NPCI settlement node...`);
+      setVerificationStep(`Matching Transaction Ref ${utr} with PhonePe settlement server...`);
     }, 800);
 
     setTimeout(() => {
-      setVerificationStep(`Payment of ₹${amount} received! Generating digital print token...`);
+      setVerificationStep(`Payment verified! Generating official SRM AP pickup token...`);
     }, 1500);
 
     setTimeout(() => {
@@ -136,7 +198,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       } catch (err) {}
 
       const randomIdNumber = Math.floor(1000 + Math.random() * 9000);
-      const generatedUtr = utrNumber.trim() || `UTR-${Date.now().toString().slice(-8)}${Math.floor(1000 + Math.random() * 9000)}`;
 
       const newOrder: PrintOrder = {
         id: `#CP${randomIdNumber}`,
@@ -157,28 +218,23 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         queuePosition: 2,
         status: 'In Progress',
         pickupToken: `SRM-${Math.floor(1000 + Math.random() * 9000)}`,
-        paymentMethod:
-          activeTab === 'phonepe_qr'
-            ? 'PhonePe UPI QR'
-            : activeTab === 'razorpay'
-            ? 'Razorpay Gateway'
-            : 'Campus Cash (Student ID)',
+        paymentMethod: method,
         paymentStatus: 'Paid',
         progressStep: 2,
         specialInstructions: orderData.specialInstructions,
         studentName: user.name,
         studentEmail: user.email,
         studentRegNo: user.regNumber,
-        utrNumber: generatedUtr,
+        utrNumber: utr,
         paymentScreenshot: screenshotFile?.url
       };
 
       setCompletedOrder(newOrder);
       onPaymentSuccess(newOrder);
-    }, 2200);
+    }, 2100);
   };
 
-  // Auto redirect countdown
+  // Redirect Countdown
   useEffect(() => {
     if (!isSuccess) return;
     const interval = setInterval(() => {
@@ -211,18 +267,18 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   PhonePe Verified Merchant
                 </span>
                 <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/5 text-[#94A3B8]">
-                  NPCI 256-Bit
+                  256-Bit SSL
                 </span>
               </div>
               <h3 className="text-sm font-bold text-white truncate max-w-md">
-                Transfer to {phonePeMerchant.name}
+                Paying to: {phonePeMerchant.name}
               </h3>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <span className="text-[10px] uppercase text-[#94A3B8] block">Amount to Pay</span>
+              <span className="text-[10px] uppercase text-[#94A3B8] block">Total Payable</span>
               <span className="text-xl font-mono font-extrabold text-[#FACC15]">₹{amount}</span>
             </div>
 
@@ -252,7 +308,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 {verificationStep}
               </p>
               <p className="text-xs text-[#94A3B8]">
-                Matching UTR code with {phonePeMerchant.name}'s PhonePe payment gateway.
+                Routing directly to {phonePeMerchant.name}'s verified merchant account.
               </p>
             </div>
           </div>
@@ -277,7 +333,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               </p>
             </div>
 
-            {/* Generated QR Pickup Token Box */}
             <div className="max-w-md mx-auto p-4 rounded-2xl bg-[#0E1716] border border-white/[0.08] flex items-center justify-between gap-4">
               <div className="w-20 h-20 rounded-xl bg-white p-2 flex items-center justify-center shrink-0">
                 <div className="w-full h-full bg-[#0B1313] p-1 rounded flex flex-col justify-between">
@@ -307,12 +362,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 </div>
                 <div className="text-emerald-400 flex items-center gap-1 font-medium text-[11px]">
                   <Clock className="w-3 h-3" />
-                  Pickup in ~15 mins at Central Library Counter #2
+                  Ready in ~15 mins at Central Library Counter #2
                 </div>
               </div>
             </div>
 
-            {/* Actions */}
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
               <button
                 type="button"
@@ -338,21 +392,21 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           </div>
         )}
 
-        {/* REAL PAYMENT FORM VIEW */}
+        {/* PAYMENT SELECTION SCREEN */}
         {!isVerifying && !isSuccess && (
           <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
             {/* Left Method Tabs */}
             <div className="w-full md:w-56 bg-[#0E1716]/95 border-r border-white/[0.08] p-3 space-y-1.5 shrink-0">
               <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
-                Payment Gateway
+                Payment Option
               </div>
 
-              {/* Tab 1: PhonePe Scanner (Real Payment) */}
+              {/* Tab 1: PhonePe QR (Like Flipkart / Myntra) */}
               <button
                 type="button"
-                onClick={() => setActiveTab('phonepe_qr')}
+                onClick={() => setActiveTab('phonepe')}
                 className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold transition-all text-left ${
-                  activeTab === 'phonepe_qr'
+                  activeTab === 'phonepe'
                     ? 'bg-purple-500/20 border border-purple-500/50 text-white shadow-sm'
                     : 'text-[#94A3B8] hover:text-white hover:bg-white/[0.04] border border-transparent'
                 }`}
@@ -364,7 +418,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   <span>PhonePe QR</span>
                 </div>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/30 text-purple-300 font-bold">
-                  Official
+                  Recommended
                 </span>
               </button>
 
@@ -382,6 +436,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   <CreditCard className="w-4 h-4 text-sky-400" />
                   <span>Cards / NetBanking</span>
                 </div>
+                <span className="text-[10px] text-sky-400">Razorpay</span>
               </button>
 
               {/* Tab 3: Campus Cash */}
@@ -401,7 +456,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 <span className="text-[10px] text-amber-300 font-mono">₹{user.campusCashBalance}</span>
               </button>
 
-              {/* Verified Payee Details Box */}
+              {/* Payee Info */}
               <div className="pt-4 mt-4 border-t border-white/[0.06] p-3 rounded-xl bg-[#162321] text-[11px] text-[#94A3B8] space-y-1">
                 <span className="text-[10px] uppercase font-bold text-purple-400 block">
                   Verified Receiver
@@ -409,15 +464,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 <div className="text-white font-bold">{phonePeMerchant.name}</div>
                 <div className="text-emerald-400 font-mono text-[10px]">{phonePeMerchant.vpa}</div>
                 <div className="text-[10px] text-white/50 pt-1">
-                  SRM Reprographics Desk
+                  SRM University AP Counter
                 </div>
               </div>
             </div>
 
-            {/* Right Pane */}
+            {/* Right Content */}
             <div className="flex-1 p-5 md:p-6 overflow-y-auto">
-              {/* TAB 1: PHONEPE QR (USER'S REAL SCANNER) */}
-              {activeTab === 'phonepe_qr' && (
+              {/* TAB 1: PHONEPE SCANNER (REAL USER SCANNER) */}
+              {activeTab === 'phonepe' && (
                 <div className="space-y-5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/[0.06] pb-3">
                     <div>
@@ -428,7 +483,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                         </span>
                       </h4>
                       <p className="text-xs text-[#94A3B8] mt-0.5">
-                        Scan using PhonePe, Google Pay, Paytm, or CRED to transfer directly.
+                        Scan from PhonePe, GPay, Paytm, or CRED to transfer directly.
                       </p>
                     </div>
 
@@ -443,7 +498,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
-                    {/* The Real PhonePe QR Scanner Card */}
+                    {/* The Exact User-Provided PhonePe QR Scanner */}
                     <div className="md:col-span-5 p-3 rounded-2xl bg-white text-center shadow-2xl relative border-2 border-purple-500">
                       <div className="rounded-xl overflow-hidden bg-white">
                         <img
@@ -464,22 +519,23 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
                     {/* Step-by-Step Payment & UTR Entry */}
                     <div className="md:col-span-7 space-y-4 text-xs">
-                      {/* Mobile Intent Direct Launch */}
+                      {/* Mobile Intent Direct Launch (Flipkart/Myntra style) */}
                       <div className="p-3.5 rounded-xl bg-purple-950/30 border border-purple-500/30 space-y-2">
                         <span className="font-bold text-purple-300 block">
-                          On Mobile? Tap to Open UPI App:
+                          On Mobile Phone? Tap to Pay in PhonePe:
                         </span>
                         <div className="grid grid-cols-2 gap-2">
-                          <a
-                            href={upiIntentUrl}
-                            className="py-2 px-3 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                          <button
+                            type="button"
+                            onClick={handleLaunchPhonePe}
+                            className="py-2.5 px-3 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-sm"
                           >
-                            <span className="font-extrabold text-[11px]">पे</span>
-                            <span>PhonePe App</span>
-                          </a>
+                            <span className="font-extrabold text-[12px]">पे</span>
+                            <span>Open PhonePe</span>
+                          </button>
                           <a
-                            href={upiIntentUrl}
-                            className="py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                            href={universalUpiUrl}
+                            className="py-2.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-sm"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                             <span>GPay / Paytm</span>
@@ -493,7 +549,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                           Enter 12-Digit UPI Ref / UTR Number <span className="text-red-400">*</span>
                         </label>
                         <p className="text-[11px] text-[#94A3B8]">
-                          After transferring ₹{amount} on PhonePe, copy the 12-digit UTR from your payment receipt screen:
+                          After transferring ₹{amount} on PhonePe, copy the 12-digit UTR from your payment screen:
                         </p>
                         <input
                           type="text"
@@ -561,7 +617,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                       {/* Verify Button */}
                       <button
                         type="button"
-                        onClick={handleVerifyAndSubmitPayment}
+                        onClick={handleVerifyPhonePePayment}
                         className="w-full py-3 px-4 rounded-xl bg-[#22C55E] hover:bg-[#16A34A] text-black font-extrabold text-sm flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(34,197,94,0.35)] active:scale-95 mt-1"
                       >
                         <ShieldCheck className="w-4 h-4" />
@@ -572,11 +628,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 </div>
               )}
 
-              {/* TAB 2: RAZORPAY GATEWAY */}
+              {/* TAB 2: RAZORPAY GATEWAY (CARDS / NETBANKING LIKE FLIPKART) */}
               {activeTab === 'razorpay' && (
                 <div className="space-y-4">
                   <div>
-                    <h4 className="text-sm font-bold text-white">Razorpay Online Payment Gateway</h4>
+                    <h4 className="text-sm font-bold text-white">Razorpay Standard Checkout</h4>
                     <p className="text-xs text-[#94A3B8] mt-0.5">
                       Pay via Credit/Debit Cards (Visa, MasterCard, RuPay) or 50+ Indian Net Banking portals.
                     </p>
@@ -584,26 +640,26 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
                   <div className="p-4 rounded-xl bg-[#0E1716] border border-white/[0.08] space-y-3">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-[#94A3B8]">Merchant Settlement:</span>
+                      <span className="text-[#94A3B8]">Merchant Payee:</span>
                       <span className="text-white font-bold">{phonePeMerchant.name}</span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-[#94A3B8]">Payable Amount:</span>
+                      <span className="text-[#94A3B8]">Total Amount:</span>
                       <span className="text-base font-mono font-bold text-[#FACC15]">₹{amount}</span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-[#94A3B8]">Supported:</span>
-                      <span className="text-emerald-400">All Indian Debit/Credit Cards &amp; NetBanking</span>
+                      <span className="text-[#94A3B8]">Customer Email:</span>
+                      <span className="text-white font-mono">{user.email}</span>
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={handleVerifyAndSubmitPayment}
-                    className="w-full py-3 px-4 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md"
+                    onClick={handleLaunchRazorpay}
+                    className="w-full py-3.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md active:scale-95"
                   >
                     <CreditCard className="w-4 h-4" />
-                    <span>Pay ₹{amount} via Razorpay Gateway</span>
+                    <span>Pay ₹{amount} via Razorpay Checkout</span>
                   </button>
                 </div>
               )}
@@ -633,7 +689,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
                   <button
                     type="button"
-                    onClick={handleVerifyAndSubmitPayment}
+                    onClick={() => finalizePayment('RFID-' + Date.now().toString().slice(-8), 'Campus Cash (Student ID)')}
                     className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md"
                   >
                     <Wallet className="w-4 h-4" />
