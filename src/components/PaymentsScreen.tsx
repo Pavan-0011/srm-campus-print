@@ -226,34 +226,48 @@ export const PaymentsScreen: React.FC<PaymentsScreenProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.04]">
-              {orders.map((o) => (
-                <tr key={o.id} className="hover:bg-white/[0.02] transition-colors">
-                  <td className="py-3 px-4 font-mono font-bold text-emerald-400">
-                    TXN-{o.id.replace('#', '')}
-                  </td>
-                  <td className="py-3 px-4 font-semibold text-white max-w-[200px] truncate">
-                    {o.title}
-                  </td>
-                  <td className="py-3 px-4 text-[#94A3B8]">
-                    {o.paymentMethod || 'UPI Payment'}
-                  </td>
-                  <td className="py-3 px-4 text-[#94A3B8]">
-                    {o.timestamp}
-                  </td>
-                  <td className="py-3 px-4 font-mono font-bold text-[#FACC15]">
-                    ₹{o.cost}
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <button
-                      onClick={() => onViewReceipt(o)}
-                      className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium text-xs inline-flex items-center gap-1.5 transition-colors border border-white/10"
-                    >
-                      <Download className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Invoice</span>
-                    </button>
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-[#94A3B8]">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <CreditCard className="w-7 h-7 text-[#94A3B8]/40" />
+                      <p className="text-xs font-semibold text-white">No transactions recorded yet</p>
+                      <p className="text-[11px] text-[#94A3B8]">
+                        Invoices and payment receipts will appear here after you place an order.
+                      </p>
+                    </div>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                orders.map((o) => (
+                  <tr key={o.id} className="hover:bg-white/[0.02] transition-colors">
+                    <td className="py-3 px-4 font-mono font-bold text-emerald-400">
+                      TXN-{o.id.replace('#', '')}
+                    </td>
+                    <td className="py-3 px-4 font-semibold text-white max-w-[200px] truncate">
+                      {o.title}
+                    </td>
+                    <td className="py-3 px-4 text-[#94A3B8]">
+                      {o.paymentMethod || 'UPI Payment'}
+                    </td>
+                    <td className="py-3 px-4 text-[#94A3B8]">
+                      {o.timestamp}
+                    </td>
+                    <td className="py-3 px-4 font-mono font-bold text-[#FACC15]">
+                      ₹{o.cost}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        onClick={() => onViewReceipt(o)}
+                        className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium text-xs inline-flex items-center gap-1.5 transition-colors border border-white/10"
+                      >
+                        <Download className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Invoice</span>
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

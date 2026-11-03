@@ -300,61 +300,83 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           </div>
 
           <div className="space-y-2.5">
-            {orders.slice(0, 3).map((order) => (
-              <div
-                key={order.id}
-                className="p-3.5 rounded-xl bg-[#0E1716]/80 hover:bg-[#162321] border border-white/[0.05] flex items-center justify-between gap-3 transition-colors"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-lg bg-[#162321] border border-white/[0.08] flex items-center justify-center text-emerald-400 shrink-0 font-mono text-xs font-bold">
-                    {order.id.replace('#', '')}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-[#F8FAFC] truncate">
-                      {order.title}
-                    </div>
-                    <div className="text-xs text-[#94A3B8] flex items-center gap-2 mt-0.5">
-                      <span>{order.fileName}</span>
-                      <span>•</span>
-                      <span className="font-mono text-amber-300">₹{order.cost}</span>
-                      <span>•</span>
-                      <span>{order.pageCount} pgs</span>
-                    </div>
-                  </div>
+            {orders.length === 0 ? (
+              <div className="p-8 rounded-xl bg-[#0E1716]/60 border border-white/[0.05] text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+                  <Printer className="w-6 h-6 text-[#22C55E]" />
                 </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  {order.status === 'In Progress' && (
-                    <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold bg-amber-400/15 text-[#FACC15] border border-amber-400/30">
-                      In Progress
-                    </span>
-                  )}
-                  {order.status === 'Ready for Pickup' && (
-                    <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold bg-sky-500/15 text-[#38BDF8] border border-sky-500/30">
-                      Ready for Pickup
-                    </span>
-                  )}
-                  {order.status === 'Completed' && (
-                    <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold bg-emerald-500/15 text-[#22C55E] border border-emerald-500/30">
-                      Completed
-                    </span>
-                  )}
-                  {order.status === 'New' && (
-                    <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold bg-blue-500/15 text-[#3B82F6] border border-blue-500/30">
-                      New
-                    </span>
-                  )}
-
-                  <button
-                    onClick={() => onTrackOrder(order)}
-                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#94A3B8] hover:text-white transition-colors"
-                    title="Track Order"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </button>
+                <div>
+                  <h4 className="text-sm font-semibold text-white">No print orders placed yet</h4>
+                  <p className="text-xs text-[#94A3B8] max-w-sm mx-auto mt-1">
+                    Upload your document (PDF, DOCX) to place your first xerox or print booking.
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => onStartNewOrder()}
+                  className="px-4 py-2 rounded-xl bg-[#22C55E] hover:bg-[#16A34A] text-black font-semibold text-xs inline-flex items-center gap-1.5 transition-all shadow-sm"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Start First Print</span>
+                </button>
               </div>
-            ))}
+            ) : (
+              orders.slice(0, 3).map((order) => (
+                <div
+                  key={order.id}
+                  className="p-3.5 rounded-xl bg-[#0E1716]/80 hover:bg-[#162321] border border-white/[0.05] flex items-center justify-between gap-3 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-lg bg-[#162321] border border-white/[0.08] flex items-center justify-center text-emerald-400 shrink-0 font-mono text-xs font-bold">
+                      {order.id.replace('#', '')}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-[#F8FAFC] truncate">
+                        {order.title}
+                      </div>
+                      <div className="text-xs text-[#94A3B8] flex items-center gap-2 mt-0.5">
+                        <span>{order.fileName}</span>
+                        <span>•</span>
+                        <span className="font-mono text-amber-300">₹{order.cost}</span>
+                        <span>•</span>
+                        <span>{order.pageCount} pgs</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {order.status === 'In Progress' && (
+                      <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold bg-amber-400/15 text-[#FACC15] border border-amber-400/30">
+                        In Progress
+                      </span>
+                    )}
+                    {order.status === 'Ready for Pickup' && (
+                      <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold bg-sky-500/15 text-[#38BDF8] border border-sky-500/30">
+                        Ready for Pickup
+                      </span>
+                    )}
+                    {order.status === 'Completed' && (
+                      <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold bg-emerald-500/15 text-[#22C55E] border border-emerald-500/30">
+                        Completed
+                      </span>
+                    )}
+                    {order.status === 'New' && (
+                      <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold bg-blue-500/15 text-[#3B82F6] border border-blue-500/30">
+                        New
+                      </span>
+                    )}
+
+                    <button
+                      onClick={() => onTrackOrder(order)}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#94A3B8] hover:text-white transition-colors"
+                      title="Track Order"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

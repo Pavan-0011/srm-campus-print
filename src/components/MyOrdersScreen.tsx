@@ -211,9 +211,13 @@ export const MyOrdersScreen: React.FC<MyOrdersScreenProps> = ({
                       <div className="w-12 h-12 rounded-2xl bg-white/5 text-white/40 flex items-center justify-center mx-auto">
                         <FileText className="w-6 h-6" />
                       </div>
-                      <p className="text-sm font-semibold text-white">No print orders found</p>
+                      <p className="text-sm font-semibold text-white">
+                        {orders.length === 0 ? 'No print orders placed yet' : 'No matching print orders'}
+                      </p>
                       <p className="text-xs text-[#94A3B8]">
-                        Try searching for another term or start a new print job.
+                        {orders.length === 0
+                          ? 'Upload your first document (PDF, DOCX) to get instant pricing and pickup token.'
+                          : 'Try searching for another term or change your filter.'}
                       </p>
                       <button
                         onClick={onStartNewOrder}

@@ -40,24 +40,19 @@ export const NewOrderWizard: React.FC<NewOrderWizardProps> = ({
       return {
         name: initialPreset.fileName,
         size: initialPreset.fileSize || '3.4 MB',
-        pages: initialPreset.pageCount || 12,
+        pages: initialPreset.pageCount || 1,
         type: 'application/pdf'
       };
     }
-    // Default sample loaded for quick experience
-    return {
-      name: 'Biology_Homework_Sem2.pdf',
-      size: '4.2 MB',
-      pages: 12,
-      type: 'application/pdf'
-    };
+    // Clean empty state by default for new users
+    return null;
   });
 
   const [documentTitle, setDocumentTitle] = useState(
-    initialPreset?.title || 'Biology III: Semester 2 Lab'
+    initialPreset?.title || ''
   );
   const [productType, setProductType] = useState(
-    initialPreset?.productType || 'Letter Booklet'
+    initialPreset?.productType || 'Print Documents (PDF, DOCX)'
   );
 
   // Print Settings
@@ -86,16 +81,15 @@ export const NewOrderWizard: React.FC<NewOrderWizardProps> = ({
 
   // Pricing Calculation
   // Black & White: ₹2 / page; Color: ₹5 / page
-  // Both sides / duplex discount: effectively ₹1.8 / page or standard ₹2 / page
   // Binding: None = 0, Staple = 5, Spiral = 30, Hard = 120
-  const pages = file ? file.pages : 1;
+  const pages = file ? file.pages : 0;
   const ratePerPage = printType === 'Color' ? 5 : 2;
   const paperQualitySurcharge = paperQuality === 'Premium (100 GSM)' ? 1 : 0;
   const bindingCost =
     binding === 'Spiral' ? 30 : binding === 'Hard Binding' ? 120 : binding === 'Corner Staple' ? 5 : 0;
 
   const totalPages = pages * copies;
-  const estimatedCost = totalPages * (ratePerPage + paperQualitySurcharge) + bindingCost;
+  const estimatedCost = file ? totalPages * (ratePerPage + paperQualitySurcharge) + bindingCost : 0;
 
   // Handle Drag & Drop
   const handleDragOver = (e: React.DragEvent) => {
@@ -134,26 +128,10 @@ export const NewOrderWizard: React.FC<NewOrderWizardProps> = ({
       type: selectedFile.type || 'application/pdf'
     });
 
-    if (!documentTitle || documentTitle === 'Biology III: Semester 2 Lab') {
+    if (!documentTitle) {
       const cleanTitle = selectedFile.name.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
       setDocumentTitle(cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1));
     }
-  };
-
-  const sampleFiles = [
-    { name: 'DAA_Assignment_Unit_4.pdf', size: '3.8 MB', pages: 14, title: 'DAA Unit 4 Assignment' },
-    { name: 'Chocolate_Club_Flyer.pdf', size: '8.7 MB', pages: 8, title: 'Chocolate Appreciation Club' },
-    { name: 'Capstone_Project_SRM.docx', size: '12.4 MB', pages: 36, title: 'B.Tech Capstone Project Report' },
-  ];
-
-  const handleLoadSample = (sample: typeof sampleFiles[0]) => {
-    setFile({
-      name: sample.name,
-      size: sample.size,
-      pages: sample.pages,
-      type: 'application/pdf'
-    });
-    setDocumentTitle(sample.title);
   };
 
   const handleProceed = () => {
@@ -317,32 +295,6 @@ export const NewOrderWizard: React.FC<NewOrderWizardProps> = ({
               )}
             </div>
 
-            {/* Quick Demo Preloaded Sample Files */}
-            <div>
-              <div className="text-[11px] uppercase tracking-wider font-semibold text-[#94A3B8] mb-2 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                <span>Or Select from Quick Campus Demo Files:</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {sampleFiles.map((s, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => handleLoadSample(s)}
-                    className="p-2.5 rounded-xl bg-[#0E1716] hover:bg-[#1B2C29] border border-white/[0.06] hover:border-emerald-500/30 text-left text-xs transition-all group"
-                  >
-                    <div className="font-semibold text-white group-hover:text-emerald-300 truncate">
-                      {s.name}
-                    </div>
-                    <div className="text-[11px] text-[#94A3B8] flex items-center justify-between mt-1">
-                      <span>{s.pages} pgs</span>
-                      <span className="text-amber-400 font-mono">{s.size}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Document Title & Product Type */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
               <div>
@@ -353,7 +305,7 @@ export const NewOrderWizard: React.FC<NewOrderWizardProps> = ({
                   type="text"
                   value={documentTitle}
                   onChange={(e) => setDocumentTitle(e.target.value)}
-                  placeholder="e.g. Biology III: Semester 2 Lab"
+                  placeholder="e.g. Physics Assignment, DAA Lab Manual..."
                   className="w-full px-3.5 py-2.5 rounded-xl glass-input text-sm"
                 />
               </div>
@@ -620,21 +572,29 @@ export const NewOrderWizard: React.FC<NewOrderWizardProps> = ({
           {/* Document Summary Chips */}
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="font-semibold text-white">Summary:</span>
-            <span className="px-2.5 py-1 rounded-lg bg-[#0E1716] border border-white/[0.08] text-[#94A3B8]">
-              Pages: <strong className="text-white font-mono">{pages}</strong>
-            </span>
-            <span className="px-2.5 py-1 rounded-lg bg-[#0E1716] border border-white/[0.08] text-[#94A3B8]">
-              Copies: <strong className="text-white font-mono">{copies}</strong>
-            </span>
-            <span className="px-2.5 py-1 rounded-lg bg-[#0E1716] border border-white/[0.08] text-[#94A3B8]">
-              Type: <strong className="text-white">{printType}</strong>
-            </span>
-            <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-              Total Pages: <strong className="font-mono">{totalPages}</strong>
-            </span>
-            {binding !== 'None' && (
-              <span className="px-2.5 py-1 rounded-lg bg-amber-400/10 border border-amber-400/20 text-amber-300">
-                {binding}
+            {file ? (
+              <>
+                <span className="px-2.5 py-1 rounded-lg bg-[#0E1716] border border-white/[0.08] text-[#94A3B8]">
+                  Pages: <strong className="text-white font-mono">{file.pages}</strong>
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-[#0E1716] border border-white/[0.08] text-[#94A3B8]">
+                  Copies: <strong className="text-white font-mono">{copies}</strong>
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-[#0E1716] border border-white/[0.08] text-[#94A3B8]">
+                  Type: <strong className="text-white">{printType}</strong>
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                  Total Pages: <strong className="font-mono">{totalPages}</strong>
+                </span>
+                {binding !== 'None' && (
+                  <span className="px-2.5 py-1 rounded-lg bg-amber-400/10 border border-amber-400/20 text-amber-300">
+                    {binding}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="px-2.5 py-1 rounded-lg bg-[#0E1716] border border-white/[0.08] text-[#94A3B8] italic">
+                Please upload a document (.pdf, .docx) to calculate pages &amp; cost
               </span>
             )}
           </div>
@@ -647,7 +607,7 @@ export const NewOrderWizard: React.FC<NewOrderWizardProps> = ({
               </span>
               <div className="flex items-baseline gap-1">
                 <span className="text-2xl md:text-3xl font-extrabold text-[#FACC15] font-mono tracking-tight">
-                  ₹{estimatedCost}
+                  {file ? `₹${estimatedCost}` : '₹0'}
                 </span>
                 <span className="text-xs text-amber-300/80">INR</span>
               </div>
@@ -664,10 +624,15 @@ export const NewOrderWizard: React.FC<NewOrderWizardProps> = ({
 
               <button
                 type="button"
+                disabled={!file}
                 onClick={handleProceed}
-                className="px-6 py-2.5 rounded-xl bg-[#22C55E] hover:bg-[#16A34A] text-black font-bold text-sm flex items-center gap-2 transition-all shadow-[0_0_20px_rgba(34,197,94,0.35)] hover:shadow-[0_0_25px_rgba(34,197,94,0.5)] active:scale-95"
+                className={`px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-all ${
+                  file
+                    ? 'bg-[#22C55E] hover:bg-[#16A34A] text-black shadow-[0_0_20px_rgba(34,197,94,0.35)] hover:shadow-[0_0_25px_rgba(34,197,94,0.5)] active:scale-95'
+                    : 'bg-white/10 text-[#94A3B8] cursor-not-allowed opacity-50'
+                }`}
               >
-                <span>Proceed to Payment</span>
+                <span>{file ? 'Proceed to Payment' : 'Upload Document to Proceed'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>

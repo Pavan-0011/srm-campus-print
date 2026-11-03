@@ -25,15 +25,37 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  // Orders State
-  const [orders, setOrders] = useState<PrintOrder[]>(initialOrders);
+  // Orders State: Empty by default for new users
+  const [orders, setOrders] = useState<PrintOrder[]>(() => {
+    try {
+      const saved = localStorage.getItem('srm_print_orders');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [ordersFilter, setOrdersFilter] = useState<string>('all');
 
   // Wizard preset state
   const [wizardPreset, setWizardPreset] = useState<Partial<PrintOrder> | undefined>(undefined);
 
-  // Notifications State
-  const [notifications, setNotifications] = useState<NotificationItem[]>(mockNotifications);
+  // Notifications State: Empty by default for new users
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('srm_print_notifications');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem('srm_print_orders', JSON.stringify(orders));
+  }, [orders]);
+
+  React.useEffect(() => {
+    localStorage.setItem('srm_print_notifications', JSON.stringify(notifications));
+  }, [notifications]);
 
   // Modals State
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
