@@ -88,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (activeResendKey) {
       try {
         const resend = new Resend(activeResendKey);
-        await resend.emails.send({
+        const { data: resData, error: resErr } = await resend.emails.send({
           from: 'SRM AP Print Hub <onboarding@resend.dev>',
           to: [cleanEmail],
           subject: `${otp} is your SRM AP Print Hub verification code`,
@@ -105,8 +105,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             </div>
           `
         });
-        emailDelivered = true;
-        providerUsed = 'Resend';
+        if (resErr) {
+          console.error('Resend delivery error:', resErr);
+        } else if (resData) {
+          emailDelivered = true;
+          providerUsed = 'Resend';
+        }
       } catch (err: any) {
         console.error('Resend delivery error:', err);
       }
