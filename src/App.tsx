@@ -7,44 +7,23 @@ import { NewOrderWizard } from './components/NewOrderWizard';
 import { MyOrdersScreen } from './components/MyOrdersScreen';
 import { PaymentsScreen } from './components/PaymentsScreen';
 import { NotificationsScreen } from './components/NotificationsScreen';
-import { AdminPortal } from './components/AdminPortal';
 import { PaymentModal } from './components/PaymentModal';
 import { TrackingModal } from './components/TrackingModal';
 import { ReceiptModal } from './components/ReceiptModal';
 import { HelpSupportModal } from './components/HelpSupportModal';
 import { ProfileModal } from './components/ProfileModal';
-import {
-  PrintOrder,
-  UserProfile,
-  NotificationItem,
-  MerchantBankDetails,
-  TransactionRecord,
-  OrderStatus
-} from './types';
-import {
-  initialUser,
-  initialAdminUser,
-  initialOrders,
-  mockNotifications,
-  initialMerchantBankDetails,
-  initialTransactions
-} from './data/mockData';
-import { Menu, ArrowRightLeft } from 'lucide-react';
+import { PrintOrder, UserProfile, NotificationItem } from './types';
+import { initialUser, initialOrders, mockNotifications } from './data/mockData';
+import { Menu } from 'lucide-react';
 
 export const App: React.FC = () => {
-  // Authentication State
+  // Authentication State (Email + OTP, single user login)
   const [isAuthenticated, setIsAuthenticated] = useState(true);
   const [user, setUser] = useState<UserProfile>(initialUser);
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-
-  // Owner / Merchant Gateway Details
-  const [merchantDetails, setMerchantDetails] = useState<MerchantBankDetails>(initialMerchantBankDetails);
-
-  // Transactions State
-  const [transactions, setTransactions] = useState<TransactionRecord[]>(initialTransactions);
 
   // Orders State
   const [orders, setOrders] = useState<PrintOrder[]>(initialOrders);
@@ -73,23 +52,11 @@ export const App: React.FC = () => {
   const handleLoginSuccess = (profile: UserProfile) => {
     setUser(profile);
     setIsAuthenticated(true);
-    if (profile.role === 'Admin') {
-      setActiveTab('dashboard'); // in Admin, dashboard shows AdminPortal
-    } else {
-      setActiveTab('dashboard');
-    }
+    setActiveTab('dashboard');
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
-  };
-
-  const handleToggleRole = () => {
-    if (user.role === 'Admin') {
-      setUser(initialUser);
-    } else {
-      setUser(initialAdminUser);
-    }
   };
 
   const handleStartNewOrder = (preset?: Partial<PrintOrder>) => {
@@ -102,25 +69,15 @@ export const App: React.FC = () => {
     setPaymentModalOpen(true);
   };
 
-  const handlePaymentSuccess = (newOrder: PrintOrder, newTxn: TransactionRecord) => {
-    // 1. Add order to state
+  const handlePaymentSuccess = (newOrder: PrintOrder) => {
+    // Add new order
     setOrders((prev) => [newOrder, ...prev]);
 
-    // 2. Add transaction to merchant ledger
-    setTransactions((prev) => [newTxn, ...prev]);
-
-    // 3. Increment owner's merchant bank balance & earnings
-    setMerchantDetails((prev) => ({
-      ...prev,
-      totalEarnings: prev.totalEarnings + newOrder.cost,
-      pendingSettlement: prev.pendingSettlement + newOrder.cost
-    }));
-
-    // 4. Create notification
+    // Create notification
     const newNotif: NotificationItem = {
       id: `notif-${Date.now()}`,
-      title: 'Payment Credited to Owner Bank! 💳',
-      message: `₹${newOrder.cost} for order ${newOrder.id} (${newOrder.title}) was routed to ${merchantDetails.bankName} (A/C ...${merchantDetails.accountNumber.slice(-4)}).`,
+      title: 'PhonePe Payment Verified! 🖨️',
+      message: `₹${newOrder.cost} for order ${newOrder.id} (${newOrder.title}) was verified via UTR: ${newOrder.utrNumber}. Spooling to laser printer.`,
       time: 'Just now',
       read: false,
       type: 'payment',
@@ -128,7 +85,7 @@ export const App: React.FC = () => {
     };
     setNotifications((prev) => [newNotif, ...prev]);
 
-    // 5. If paid via Campus Cash, deduct student balance
+    // If paid via Campus Cash, deduct balance
     if (newOrder.paymentMethod?.includes('Campus Cash')) {
       setUser((prev) => ({
         ...prev,
@@ -139,38 +96,6 @@ export const App: React.FC = () => {
     // Switch view to My Orders
     setActiveTab('my-orders');
     setOrdersFilter('all');
-  };
-
-  const handleUpdateOrderStatus = (orderId: string, newStatus: OrderStatus) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
-    );
-
-    const updatedOrder = orders.find((o) => o.id === orderId);
-    if (updatedOrder) {
-      const notif: NotificationItem = {
-        id: `notif-${Date.now()}`,
-        title: `Order ${orderId} Status Updated! 🖨️`,
-        message: `Order "${updatedOrder.title}" is now marked as "${newStatus}".`,
-        time: 'Just now',
-        read: false,
-        type: 'order',
-        orderId
-      };
-      setNotifications((prev) => [notif, ...prev]);
-    }
-  };
-
-  const handleUpdateMerchantDetails = (updated: MerchantBankDetails) => {
-    setMerchantDetails(updated);
-  };
-
-  const handleManualSettleBalance = (amount: number) => {
-    setMerchantDetails((prev) => ({
-      ...prev,
-      pendingSettlement: Math.max(0, prev.pendingSettlement - amount),
-      settledToBank: prev.settledToBank + amount
-    }));
   };
 
   const handleTrackOrder = (order: PrintOrder) => {
@@ -236,24 +161,20 @@ export const App: React.FC = () => {
 
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
 
-  // If not authenticated, render Screen A with Student & Admin login options
+  // Single User Authentication with Real Email & OTP
   if (!isAuthenticated) {
     return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
   }
-
-  const isAdmin = user.role === 'Admin';
 
   return (
     <div className="min-h-screen bg-[#0B1313] text-[#F8FAFC] flex flex-col font-sans selection:bg-emerald-500 selection:text-black">
       {/* Top Header */}
       <Header
         user={user}
-        merchantDetails={merchantDetails}
         unreadCount={unreadNotificationsCount}
         onOpenNotifications={() => setActiveTab('notifications')}
         onOpenProfile={() => setProfileModalOpen(true)}
         activeOrdersCount={activeOrdersCount}
-        onToggleRole={handleToggleRole}
       />
 
       {/* Mobile Subbar */}
@@ -265,13 +186,9 @@ export const App: React.FC = () => {
           <Menu className="w-4 h-4 text-emerald-400" />
           <span>Menu</span>
         </button>
-        <button
-          onClick={handleToggleRole}
-          className="text-xs font-semibold text-emerald-400 flex items-center gap-1"
-        >
-          <ArrowRightLeft className="w-3 h-3" />
-          <span>Switch to {isAdmin ? 'Student' : 'Admin'}</span>
-        </button>
+        <span className="text-xs font-semibold text-emerald-400 capitalize">
+          {activeTab.replace('-', ' ')}
+        </span>
       </div>
 
       {/* Main Body */}
@@ -295,83 +212,67 @@ export const App: React.FC = () => {
 
         {/* Content Area */}
         <main className="flex-1 min-w-0 p-4 md:p-8 overflow-y-auto">
-          {/* If Admin is viewing dashboard, show AdminPortal */}
-          {isAdmin && activeTab === 'dashboard' ? (
-            <AdminPortal
-              merchantDetails={merchantDetails}
-              onUpdateMerchantDetails={handleUpdateMerchantDetails}
+          {activeTab === 'dashboard' && (
+            <DashboardScreen
+              user={user}
               orders={orders}
-              onUpdateOrderStatus={handleUpdateOrderStatus}
-              transactions={transactions}
-              onManualSettleBalance={handleManualSettleBalance}
-              onSwitchToStudentView={handleToggleRole}
+              onStartNewOrder={handleStartNewOrder}
+              onViewOrders={handleViewOrdersWithFilter}
+              onTrackOrder={handleTrackOrder}
             />
-          ) : (
-            <>
-              {activeTab === 'dashboard' && (
-                <DashboardScreen
-                  user={user}
-                  orders={orders}
-                  onStartNewOrder={handleStartNewOrder}
-                  onViewOrders={handleViewOrdersWithFilter}
-                  onTrackOrder={handleTrackOrder}
-                />
-              )}
+          )}
 
-              {activeTab === 'new-order' && (
-                <NewOrderWizard
-                  initialPreset={wizardPreset}
-                  onProceedToPayment={handleProceedToPayment}
-                  onCancel={() => setActiveTab('dashboard')}
-                />
-              )}
+          {activeTab === 'new-order' && (
+            <NewOrderWizard
+              initialPreset={wizardPreset}
+              onProceedToPayment={handleProceedToPayment}
+              onCancel={() => setActiveTab('dashboard')}
+            />
+          )}
 
-              {activeTab === 'my-orders' && (
-                <MyOrdersScreen
-                  orders={orders}
-                  initialFilter={ordersFilter}
-                  onTrackOrder={handleTrackOrder}
-                  onDownloadReceipt={handleDownloadReceipt}
-                  onReorder={handleReorder}
-                  onStartNewOrder={() => handleStartNewOrder()}
-                />
-              )}
+          {activeTab === 'my-orders' && (
+            <MyOrdersScreen
+              orders={orders}
+              initialFilter={ordersFilter}
+              onTrackOrder={handleTrackOrder}
+              onDownloadReceipt={handleDownloadReceipt}
+              onReorder={handleReorder}
+              onStartNewOrder={() => handleStartNewOrder()}
+            />
+          )}
 
-              {activeTab === 'payments' && (
-                <PaymentsScreen
-                  user={user}
-                  orders={orders}
-                  onViewReceipt={handleDownloadReceipt}
-                  onAddCampusCash={handleAddCampusCash}
-                />
-              )}
+          {activeTab === 'payments' && (
+            <PaymentsScreen
+              user={user}
+              orders={orders}
+              onViewReceipt={handleDownloadReceipt}
+              onAddCampusCash={handleAddCampusCash}
+            />
+          )}
 
-              {activeTab === 'notifications' && (
-                <NotificationsScreen
-                  notifications={notifications}
-                  onMarkAllAsRead={handleMarkAllNotificationsRead}
-                  onClearNotifications={handleClearNotifications}
-                  onSelectOrderById={handleSelectOrderById}
-                />
-              )}
-            </>
+          {activeTab === 'notifications' && (
+            <NotificationsScreen
+              notifications={notifications}
+              onMarkAllAsRead={handleMarkAllNotificationsRead}
+              onClearNotifications={handleClearNotifications}
+              onSelectOrderById={handleSelectOrderById}
+            />
           )}
         </main>
       </div>
 
       {/* Global Modals */}
-      {/* 1. Indian Payment Gateway Modal (Routes directly to Owner Bank Account) */}
+      {/* Real PhonePe QR & UTR Payment Gateway Modal */}
       <PaymentModal
         isOpen={paymentModalOpen}
         orderData={pendingOrderData}
         user={user}
-        merchantDetails={merchantDetails}
         onClose={() => setPaymentModalOpen(false)}
         onPaymentSuccess={handlePaymentSuccess}
         onViewReceipt={handleDownloadReceipt}
       />
 
-      {/* 2. Order Tracking Modal */}
+      {/* Order Tracking Modal */}
       <TrackingModal
         isOpen={trackingModalOpen}
         order={selectedOrderForTracking}
@@ -379,7 +280,7 @@ export const App: React.FC = () => {
         onViewReceipt={handleDownloadReceipt}
       />
 
-      {/* 3. Official Tax Invoice / Receipt Modal */}
+      {/* Official Tax Invoice / Receipt Modal */}
       <ReceiptModal
         isOpen={receiptModalOpen}
         order={selectedOrderForReceipt}
@@ -387,13 +288,13 @@ export const App: React.FC = () => {
         onClose={() => setReceiptModalOpen(false)}
       />
 
-      {/* 4. Help & Support Modal */}
+      {/* Help & Support Modal */}
       <HelpSupportModal
         isOpen={helpModalOpen}
         onClose={() => setHelpModalOpen(false)}
       />
 
-      {/* 5. Student / Admin Profile Modal */}
+      {/* Student Profile Modal */}
       <ProfileModal
         isOpen={profileModalOpen}
         user={user}

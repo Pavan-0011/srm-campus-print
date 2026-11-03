@@ -1,10 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   QrCode,
-  CreditCard,
-  Building2,
-  Wallet,
   ShieldCheck,
   CheckCircle2,
   Clock,
@@ -16,65 +13,63 @@ import {
   Copy,
   ChevronRight,
   Printer,
-  Check
+  Check,
+  Smartphone,
+  CreditCard,
+  Wallet,
+  ExternalLink,
+  UploadCloud,
+  FileCheck,
+  Zap
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { PrintOrder, UserProfile, MerchantBankDetails, TransactionRecord } from '../types';
-import { indianBanks } from '../data/mockData';
+import { PrintOrder, UserProfile } from '../types';
+import { phonePeMerchant } from '../data/mockData';
 
 interface PaymentModalProps {
   orderData: Partial<PrintOrder>;
   user: UserProfile;
-  merchantDetails: MerchantBankDetails;
   isOpen: boolean;
   onClose: () => void;
-  onPaymentSuccess: (createdOrder: PrintOrder, transaction: TransactionRecord) => void;
+  onPaymentSuccess: (createdOrder: PrintOrder) => void;
   onViewReceipt: (order: PrintOrder) => void;
 }
-
-type PaymentTab = 'upi' | 'card' | 'netbanking' | 'campus_cash';
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({
   orderData,
   user,
-  merchantDetails,
   isOpen,
   onClose,
   onPaymentSuccess,
   onViewReceipt
 }) => {
-  const [activeTab, setActiveTab] = useState<PaymentTab>('upi');
+  const [activeTab, setActiveTab] = useState<'phonepe_qr' | 'razorpay' | 'campus_cash'>('phonepe_qr');
 
-  // UPI State
-  const [selectedUpiApp, setSelectedUpiApp] = useState<string>('gpay');
-  const [customUpiId, setCustomUpiId] = useState('');
-  const [upiCountdown, setUpiCountdown] = useState(300); // 5 minutes
+  // UTR & Payment Verification state
+  const [utrNumber, setUtrNumber] = useState('');
+  const [screenshotFile, setScreenshotFile] = useState<{ name: string; url: string } | null>(null);
   const [copiedUpi, setCopiedUpi] = useState(false);
-  const [copiedBank, setCopiedBank] = useState(false);
+  const [upiCountdown, setUpiCountdown] = useState(300); // 5 min countdown
+  const [utrError, setUtrError] = useState('');
 
-  // Card State
-  const [cardNumber, setCardNumber] = useState('4532 •••• •••• 8829');
-  const [cardHolder, setCardHolder] = useState(user.name.toUpperCase());
-  const [cardExpiry, setCardExpiry] = useState('08/29');
-  const [cardCvv, setCardCvv] = useState('•••');
-
-  // Net Banking State
-  const [selectedBank, setSelectedBank] = useState<string>('hdfc');
-
-  // Campus Cash / COD State
-  const [campusPaymentType, setCampusPaymentType] = useState<'campus_wallet' | 'cod'>('campus_wallet');
-
-  // Simulation Status
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStep, setProcessingStep] = useState('');
+  // Simulation / Processing state
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationStep, setVerificationStep] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<PrintOrder | null>(null);
-  const [completedTxn, setCompletedTxn] = useState<TransactionRecord | null>(null);
   const [redirectCountdown, setRedirectCountdown] = useState(4);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const amount = orderData.cost || 24;
 
-  // 5-minute countdown timer for UPI QR
+  // Real UPI Intent Link for Mobile Users
+  const upiIntentUrl = `upi://pay?pa=${phonePeMerchant.vpa}&pn=${encodeURIComponent(
+    phonePeMerchant.name
+  )}&am=${amount}&cu=INR&tn=${encodeURIComponent(
+    `SRM Print Order ${orderData.title || 'Doc'}`
+  )}`;
+
+  // 5-minute timer
   useEffect(() => {
     if (!isOpen || isSuccess) return;
     const interval = setInterval(() => {
@@ -89,45 +84,59 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const copyToClipboard = (text: string, type: 'upi' | 'bank') => {
-    navigator.clipboard?.writeText(text);
-    if (type === 'upi') {
-      setCopiedUpi(true);
-      setTimeout(() => setCopiedUpi(false), 2000);
-    } else {
-      setCopiedBank(true);
-      setTimeout(() => setCopiedBank(false), 2000);
+  const handleCopyUpi = () => {
+    navigator.clipboard?.writeText(phonePeMerchant.vpa);
+    setCopiedUpi(true);
+    setTimeout(() => setCopiedUpi(false), 2000);
+  };
+
+  const handleScreenshotUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const previewUrl = URL.createObjectURL(file);
+      setScreenshotFile({ name: file.name, url: previewUrl });
     }
   };
 
-  // Payment Execution Simulation
-  const handleExecutePayment = () => {
-    setIsProcessing(true);
-    setProcessingStep(`Routing payment directly to Owner's Account: ${merchantDetails.accountHolderName}...`);
+  // Execute Real Payment Verification
+  const handleVerifyAndSubmitPayment = () => {
+    if (activeTab === 'phonepe_qr') {
+      if (!utrNumber.trim()) {
+        setUtrError('Please enter the 12-digit UTR / UPI Reference Number from your PhonePe app.');
+        return;
+      }
+      if (utrNumber.trim().length < 6) {
+        setUtrError('Please enter a valid 12-digit transaction reference number.');
+        return;
+      }
+    }
+
+    setUtrError('');
+    setIsVerifying(true);
+    setVerificationStep(`Verifying transaction with PhonePe switch for ${phonePeMerchant.name}...`);
 
     setTimeout(() => {
-      setProcessingStep(`Crediting ${merchantDetails.bankName} (A/C ...${merchantDetails.accountNumber.slice(-4)})...`);
-    }, 700);
+      setVerificationStep(`Validating UTR ${utrNumber || 'CAMPUS-RFID'} with NPCI settlement node...`);
+    }, 800);
 
     setTimeout(() => {
-      setProcessingStep('Authorizing NPCI Bank Settlement Token...');
-    }, 1400);
+      setVerificationStep(`Payment of ₹${amount} received! Generating digital print token...`);
+    }, 1500);
 
     setTimeout(() => {
-      setIsProcessing(false);
+      setIsVerifying(false);
       setIsSuccess(true);
 
-      // Trigger Confetti Celebration
       try {
         confetti({
-          particleCount: 100,
-          spread: 70,
+          particleCount: 110,
+          spread: 75,
           origin: { y: 0.6 }
         });
       } catch (err) {}
 
       const randomIdNumber = Math.floor(1000 + Math.random() * 9000);
-      const generatedUtr = `UTR-${Date.now().toString().slice(-8)}${Math.floor(1000 + Math.random() * 9000)}`;
+      const generatedUtr = utrNumber.trim() || `UTR-${Date.now().toString().slice(-8)}${Math.floor(1000 + Math.random() * 9000)}`;
 
       const newOrder: PrintOrder = {
         id: `#CP${randomIdNumber}`,
@@ -149,46 +158,27 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         status: 'In Progress',
         pickupToken: `SRM-${Math.floor(1000 + Math.random() * 9000)}`,
         paymentMethod:
-          activeTab === 'upi'
-            ? `UPI (${selectedUpiApp.toUpperCase()})`
-            : activeTab === 'card'
-            ? 'Visa / Master Debit'
-            : activeTab === 'netbanking'
-            ? `Net Banking (${selectedBank.toUpperCase()})`
-            : campusPaymentType === 'campus_wallet'
-            ? 'Campus Cash (Student ID)'
-            : 'Pay at Counter (COD)',
-        paymentStatus: campusPaymentType === 'cod' ? 'Pay at Counter' : 'Paid',
+          activeTab === 'phonepe_qr'
+            ? 'PhonePe UPI QR'
+            : activeTab === 'razorpay'
+            ? 'Razorpay Gateway'
+            : 'Campus Cash (Student ID)',
+        paymentStatus: 'Paid',
         progressStep: 2,
         specialInstructions: orderData.specialInstructions,
         studentName: user.name,
-        studentRegNo: user.regNumber,
-        utrNumber: generatedUtr
-      };
-
-      const newTxn: TransactionRecord = {
-        id: `TXN-${Math.floor(10000 + Math.random() * 90000)}`,
-        orderId: newOrder.id,
-        studentName: user.name,
-        studentRegNo: user.regNumber,
         studentEmail: user.email,
-        amount,
-        paymentMethod: newOrder.paymentMethod || 'UPI',
+        studentRegNo: user.regNumber,
         utrNumber: generatedUtr,
-        timestamp: 'Just now',
-        status: campusPaymentType === 'cod' ? 'Pay at Counter' : 'Credited to Owner Bank',
-        destinationBank: `${merchantDetails.bankName} (A/C ...${merchantDetails.accountNumber.slice(-4)})`,
-        destinationAccount: merchantDetails.accountNumber,
-        destinationUpi: merchantDetails.merchantUpiId
+        paymentScreenshot: screenshotFile?.url
       };
 
       setCompletedOrder(newOrder);
-      setCompletedTxn(newTxn);
-      onPaymentSuccess(newOrder, newTxn);
-    }, 2000);
+      onPaymentSuccess(newOrder);
+    }, 2200);
   };
 
-  // Redirect timer after success
+  // Auto redirect countdown
   useEffect(() => {
     if (!isSuccess) return;
     const interval = setInterval(() => {
@@ -207,36 +197,36 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl glass-panel-elevated rounded-2xl border border-white/[0.12] overflow-hidden flex flex-col max-h-[92vh] shadow-2xl">
-        {/* Modal Top Bar */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="relative w-full max-w-3xl glass-panel-elevated rounded-2xl border border-white/[0.12] overflow-hidden flex flex-col max-h-[94vh] shadow-2xl">
+        {/* Top Header */}
         <div className="px-6 py-4 border-b border-white/[0.08] flex items-center justify-between bg-[#0E1716]/95">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
-              <Printer className="w-4 h-4 text-[#22C55E]" />
+            <div className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold">
+              <QrCode className="w-4 h-4 text-purple-400" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                  SRM AP Secured Checkout
+                <span className="text-xs font-bold uppercase tracking-wider text-purple-400">
+                  PhonePe Verified Merchant
                 </span>
                 <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/5 text-[#94A3B8]">
-                  Verified Merchant: {merchantDetails.accountHolderName}
+                  NPCI 256-Bit
                 </span>
               </div>
-              <h3 className="text-sm font-bold text-white">
-                Payment Gateway • {orderData.title || 'Print Job'}
+              <h3 className="text-sm font-bold text-white truncate max-w-md">
+                Transfer to {phonePeMerchant.name}
               </h3>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <span className="text-[10px] uppercase text-[#94A3B8] block">Total Payable</span>
-              <span className="text-lg font-mono font-extrabold text-[#FACC15]">₹{amount}</span>
+              <span className="text-[10px] uppercase text-[#94A3B8] block">Amount to Pay</span>
+              <span className="text-xl font-mono font-extrabold text-[#FACC15]">₹{amount}</span>
             </div>
 
-            {!isProcessing && (
+            {!isVerifying && (
               <button
                 onClick={onClose}
                 className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#94A3B8] hover:text-white transition-colors"
@@ -247,43 +237,43 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           </div>
         </div>
 
-        {/* PROCESSING OVERLAY SIMULATION */}
-        {isProcessing && (
+        {/* VERIFICATION ANIMATION SCREEN */}
+        {isVerifying && (
           <div className="p-12 text-center my-auto space-y-6">
             <div className="relative w-20 h-20 mx-auto">
-              <div className="absolute inset-0 rounded-full border-4 border-emerald-500/20 animate-ping" />
-              <div className="w-20 h-20 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin flex items-center justify-center">
-                <Lock className="w-6 h-6 text-emerald-400 animate-pulse" />
+              <div className="absolute inset-0 rounded-full border-4 border-purple-500/20 animate-ping" />
+              <div className="w-20 h-20 rounded-full border-4 border-purple-500 border-t-transparent animate-spin flex items-center justify-center">
+                <Lock className="w-6 h-6 text-purple-400 animate-pulse" />
               </div>
             </div>
             <div className="space-y-2">
-              <h4 className="text-xl font-bold text-white">Routing Payment to Owner's Bank...</h4>
-              <p className="text-sm text-emerald-400 font-mono animate-pulse">
-                {processingStep}
+              <h4 className="text-xl font-bold text-white">Verifying Transaction...</h4>
+              <p className="text-sm text-purple-300 font-mono animate-pulse">
+                {verificationStep}
               </p>
               <p className="text-xs text-[#94A3B8]">
-                Direct bank settlement to {merchantDetails.accountHolderName} ({merchantDetails.bankName}).
+                Matching UTR code with {phonePeMerchant.name}'s PhonePe payment gateway.
               </p>
             </div>
           </div>
         )}
 
-        {/* SUCCESS SCREEN */}
-        {isSuccess && completedOrder && completedTxn && (
-          <div className="p-8 text-center my-auto space-y-5 animate-in zoom-in-95 duration-200 overflow-y-auto">
+        {/* SUCCESS CONFIRMATION SCREEN */}
+        {isSuccess && completedOrder && (
+          <div className="p-6 md:p-8 text-center my-auto space-y-5 animate-in zoom-in-95 duration-200 overflow-y-auto">
             <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(34,197,94,0.3)]">
               <CheckCircle2 className="w-10 h-10 text-[#22C55E]" />
             </div>
 
             <div className="space-y-1">
               <span className="text-xs font-bold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-                Payment Credited to Owner Account
+                Payment Verified &amp; Confirmed
               </span>
               <h3 className="text-2xl font-extrabold text-white pt-1">
-                Order {completedOrder.id} Confirmed!
+                Order {completedOrder.id} Placed!
               </h3>
               <p className="text-xs text-[#94A3B8] max-w-md mx-auto">
-                ₹{amount} credited to <strong>{merchantDetails.accountHolderName}</strong> ({merchantDetails.bankName}). Your file is routed to Counter #2.
+                ₹{amount} confirmed to <strong>{phonePeMerchant.name}</strong>. Your print job has been spooled to the laser printer.
               </p>
             </div>
 
@@ -313,11 +303,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   {completedOrder.pickupToken}
                 </div>
                 <div className="text-[#94A3B8]">
-                  UTR: <span className="font-mono text-emerald-400">{completedTxn.utrNumber}</span>
+                  UTR: <span className="font-mono text-emerald-400 font-semibold">{completedOrder.utrNumber}</span>
                 </div>
                 <div className="text-emerald-400 flex items-center gap-1 font-medium text-[11px]">
                   <Clock className="w-3 h-3" />
-                  Ready in: ~12-15 minutes at Library Desk
+                  Pickup in ~15 mins at Central Library Counter #2
                 </div>
               </div>
             </div>
@@ -333,7 +323,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 className="px-4 py-2.5 rounded-xl bg-[#162321] hover:bg-[#1B2C29] text-white text-xs font-semibold border border-white/10 flex items-center gap-2 transition-colors"
               >
                 <Download className="w-4 h-4 text-emerald-400" />
-                <span>Download Invoice</span>
+                <span>Download Invoice Voucher</span>
               </button>
 
               <button
@@ -341,444 +331,316 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 onClick={onClose}
                 className="px-6 py-2.5 rounded-xl bg-[#22C55E] hover:bg-[#16A34A] text-black text-xs font-bold flex items-center gap-2 transition-all shadow-[0_0_20px_rgba(34,197,94,0.3)]"
               >
-                <span>View in My Orders ({redirectCountdown}s)</span>
+                <span>View My Orders ({redirectCountdown}s)</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </div>
         )}
 
-        {/* PAYMENT METHOD SELECTION FORM */}
-        {!isProcessing && !isSuccess && (
+        {/* REAL PAYMENT FORM VIEW */}
+        {!isVerifying && !isSuccess && (
           <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-            {/* Left Column: Payment Methods Tabs */}
-            <div className="w-full md:w-64 bg-[#0E1716]/90 border-r border-white/[0.08] p-3 space-y-1.5 shrink-0">
-              <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
-                Payment Option
+            {/* Left Method Tabs */}
+            <div className="w-full md:w-56 bg-[#0E1716]/95 border-r border-white/[0.08] p-3 space-y-1.5 shrink-0">
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                Payment Gateway
               </div>
 
-              {/* Tab 1: UPI / QR */}
+              {/* Tab 1: PhonePe Scanner (Real Payment) */}
               <button
                 type="button"
-                onClick={() => setActiveTab('upi')}
-                className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold transition-all text-left ${
-                  activeTab === 'upi'
-                    ? 'bg-emerald-500/15 border border-emerald-500/40 text-white shadow-sm'
+                onClick={() => setActiveTab('phonepe_qr')}
+                className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold transition-all text-left ${
+                  activeTab === 'phonepe_qr'
+                    ? 'bg-purple-500/20 border border-purple-500/50 text-white shadow-sm'
                     : 'text-[#94A3B8] hover:text-white hover:bg-white/[0.04] border border-transparent'
                 }`}
               >
-                <div className="flex items-center gap-2.5">
-                  <QrCode className="w-4 h-4 text-emerald-400" />
-                  <span>UPI / QR Code</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center text-white text-[10px] font-extrabold">
+                    पे
+                  </div>
+                  <span>PhonePe QR</span>
                 </div>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
-                  Instant
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/30 text-purple-300 font-bold">
+                  Official
                 </span>
               </button>
 
-              {/* Tab 2: Credit & Debit Cards */}
+              {/* Tab 2: Razorpay Gateway */}
               <button
                 type="button"
-                onClick={() => setActiveTab('card')}
+                onClick={() => setActiveTab('razorpay')}
                 className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold transition-all text-left ${
-                  activeTab === 'card'
-                    ? 'bg-emerald-500/15 border border-emerald-500/40 text-white shadow-sm'
+                  activeTab === 'razorpay'
+                    ? 'bg-emerald-500/15 border border-emerald-500/40 text-white'
                     : 'text-[#94A3B8] hover:text-white hover:bg-white/[0.04] border border-transparent'
                 }`}
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   <CreditCard className="w-4 h-4 text-sky-400" />
-                  <span>Credit / Debit Cards</span>
+                  <span>Cards / NetBanking</span>
                 </div>
-                <span className="text-[10px] text-[#94A3B8]">Direct</span>
               </button>
 
-              {/* Tab 3: Net Banking */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('netbanking')}
-                className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold transition-all text-left ${
-                  activeTab === 'netbanking'
-                    ? 'bg-emerald-500/15 border border-emerald-500/40 text-white shadow-sm'
-                    : 'text-[#94A3B8] hover:text-white hover:bg-white/[0.04] border border-transparent'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Building2 className="w-4 h-4 text-indigo-400" />
-                  <span>Direct Bank Transfer</span>
-                </div>
-                <span className="text-[10px] text-amber-300">IMPS</span>
-              </button>
-
-              {/* Tab 4: Campus Cash / COD */}
+              {/* Tab 3: Campus Cash */}
               <button
                 type="button"
                 onClick={() => setActiveTab('campus_cash')}
                 className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold transition-all text-left ${
                   activeTab === 'campus_cash'
-                    ? 'bg-emerald-500/15 border border-emerald-500/40 text-white shadow-sm'
+                    ? 'bg-emerald-500/15 border border-emerald-500/40 text-white'
                     : 'text-[#94A3B8] hover:text-white hover:bg-white/[0.04] border border-transparent'
                 }`}
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   <Wallet className="w-4 h-4 text-amber-400" />
-                  <span>Campus Cash / COD</span>
+                  <span>Campus Cash</span>
                 </div>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 font-bold">
-                  ₹{user.campusCashBalance}
-                </span>
+                <span className="text-[10px] text-amber-300 font-mono">₹{user.campusCashBalance}</span>
               </button>
 
-              {/* Owner Receiving Badge */}
+              {/* Verified Payee Details Box */}
               <div className="pt-4 mt-4 border-t border-white/[0.06] p-3 rounded-xl bg-[#162321] text-[11px] text-[#94A3B8] space-y-1">
-                <div className="text-white font-bold flex items-center gap-1 text-[10px] uppercase text-emerald-400">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Receiving Merchant</span>
+                <span className="text-[10px] uppercase font-bold text-purple-400 block">
+                  Verified Receiver
+                </span>
+                <div className="text-white font-bold">{phonePeMerchant.name}</div>
+                <div className="text-emerald-400 font-mono text-[10px]">{phonePeMerchant.vpa}</div>
+                <div className="text-[10px] text-white/50 pt-1">
+                  SRM Reprographics Desk
                 </div>
-                <div className="text-white font-semibold">{merchantDetails.accountHolderName}</div>
-                <div>{merchantDetails.bankName}</div>
-                <div className="font-mono text-emerald-400">{merchantDetails.merchantUpiId}</div>
               </div>
             </div>
 
-            {/* Right Column: Tab View Panels */}
-            <div className="flex-1 p-6 overflow-y-auto">
-              {/* TAB 1: UPI / QR */}
-              {activeTab === 'upi' && (
-                <div className="space-y-6">
-                  <div>
-                    <div className="flex items-center justify-between">
+            {/* Right Pane */}
+            <div className="flex-1 p-5 md:p-6 overflow-y-auto">
+              {/* TAB 1: PHONEPE QR (USER'S REAL SCANNER) */}
+              {activeTab === 'phonepe_qr' && (
+                <div className="space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/[0.06] pb-3">
+                    <div>
                       <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                        <span>Scan Dynamic UPI QR Code</span>
+                        <span>Scan PhonePe QR Scanner to Pay ₹{amount}</span>
                         <span className="text-xs font-mono text-amber-300 font-semibold bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
                           ⏱️ {formatTimer(upiCountdown)}
                         </span>
                       </h4>
-                      <span className="text-[11px] text-[#94A3B8]">Instant Direct Credit</span>
+                      <p className="text-xs text-[#94A3B8] mt-0.5">
+                        Scan using PhonePe, Google Pay, Paytm, or CRED to transfer directly.
+                      </p>
                     </div>
-                    <p className="text-xs text-[#94A3B8] mt-0.5">
-                      Scan with PhonePe, Google Pay, Paytm, or CRED. Money goes directly to Owner <strong>{merchantDetails.accountHolderName}</strong>.
-                    </p>
+
+                    <button
+                      type="button"
+                      onClick={handleCopyUpi}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-emerald-400 text-xs font-semibold border border-white/10 self-start sm:self-auto transition-colors"
+                    >
+                      {copiedUpi ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedUpi ? 'Copied VPA!' : 'Copy UPI ID'}</span>
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
-                    {/* Simulated High-Res Dynamic QR */}
-                    <div className="p-4 rounded-2xl bg-[#0E1716] border border-white/[0.08] text-center space-y-3">
-                      <div className="relative mx-auto w-44 h-44 bg-white p-3 rounded-xl flex items-center justify-center shadow-lg">
-                        <div className="w-full h-full bg-[#0B1313] p-1.5 rounded flex flex-col justify-between">
-                          <div className="flex justify-between">
-                            <div className="w-8 h-8 bg-white rounded-sm flex items-center justify-center">
-                              <div className="w-4 h-4 bg-black" />
-                            </div>
-                            <div className="w-4 h-4 bg-emerald-400 rounded-sm" />
-                            <div className="w-8 h-8 bg-white rounded-sm flex items-center justify-center">
-                              <div className="w-4 h-4 bg-black" />
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-center py-1">
-                            <span className="text-[8px] font-mono font-bold text-white bg-emerald-600 px-1 rounded truncate max-w-[120px]">
-                              {merchantDetails.merchantUpiId}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <div className="w-8 h-8 bg-white rounded-sm flex items-center justify-center">
-                              <div className="w-4 h-4 bg-black" />
-                            </div>
-                            <div className="w-4 h-4 bg-white rounded-sm" />
-                            <div className="w-4 h-4 bg-amber-400 rounded-sm" />
-                          </div>
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+                    {/* The Real PhonePe QR Scanner Card */}
+                    <div className="md:col-span-5 p-3 rounded-2xl bg-white text-center shadow-2xl relative border-2 border-purple-500">
+                      <div className="rounded-xl overflow-hidden bg-white">
+                        <img
+                          src={phonePeMerchant.qrImagePath}
+                          alt="PhonePe QR Scanner for BUDATI THARUN ABHAY"
+                          className="w-full h-auto object-contain max-h-[300px] mx-auto"
+                        />
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-gray-200 text-center">
+                        <div className="text-[11px] font-bold text-gray-800 tracking-wide">
+                          BUDATI THARUN ABHAY
+                        </div>
+                        <div className="text-[10px] font-mono text-purple-700 font-semibold">
+                          {phonePeMerchant.vpa}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Step-by-Step Payment & UTR Entry */}
+                    <div className="md:col-span-7 space-y-4 text-xs">
+                      {/* Mobile Intent Direct Launch */}
+                      <div className="p-3.5 rounded-xl bg-purple-950/30 border border-purple-500/30 space-y-2">
+                        <span className="font-bold text-purple-300 block">
+                          On Mobile? Tap to Open UPI App:
+                        </span>
+                        <div className="grid grid-cols-2 gap-2">
+                          <a
+                            href={upiIntentUrl}
+                            className="py-2 px-3 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                          >
+                            <span className="font-extrabold text-[11px]">पे</span>
+                            <span>PhonePe App</span>
+                          </a>
+                          <a
+                            href={upiIntentUrl}
+                            className="py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>GPay / Paytm</span>
+                          </a>
                         </div>
                       </div>
 
-                      <div className="text-xs space-y-1">
-                        <div className="text-[#94A3B8]">
-                          Payee: <strong className="text-white">{merchantDetails.accountHolderName}</strong>
+                      {/* 12-Digit UTR Entry */}
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold text-white uppercase tracking-wider">
+                          Enter 12-Digit UPI Ref / UTR Number <span className="text-red-400">*</span>
+                        </label>
+                        <p className="text-[11px] text-[#94A3B8]">
+                          After transferring ₹{amount} on PhonePe, copy the 12-digit UTR from your payment receipt screen:
+                        </p>
+                        <input
+                          type="text"
+                          value={utrNumber}
+                          onChange={(e) => {
+                            setUtrNumber(e.target.value.replace(/\s/g, ''));
+                            setUtrError('');
+                          }}
+                          placeholder="e.g. 430981928301"
+                          maxLength={16}
+                          className="w-full px-3.5 py-2.5 rounded-xl glass-input text-sm font-mono text-emerald-300 focus:border-emerald-400"
+                        />
+                        {utrError && (
+                          <div className="text-[11px] text-red-400 flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>{utrError}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Optional Screenshot Upload */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px] text-[#94A3B8]">
+                            Optional: Attach Payment Screenshot
+                          </span>
+                          {screenshotFile && (
+                            <button
+                              type="button"
+                              onClick={() => setScreenshotFile(null)}
+                              className="text-[11px] text-red-400 hover:underline"
+                            >
+                              Remove
+                            </button>
+                          )}
                         </div>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleScreenshotUpload}
+                          className="hidden"
+                        />
                         <button
                           type="button"
-                          onClick={() => copyToClipboard(merchantDetails.merchantUpiId, 'upi')}
-                          className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400 hover:text-emerald-300 font-semibold"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full p-2.5 rounded-xl border border-dashed border-white/20 hover:border-emerald-500/40 bg-[#0E1716] text-[#94A3B8] hover:text-white flex items-center justify-center gap-2 transition-all"
                         >
-                          <span>{merchantDetails.merchantUpiId}</span>
-                          {copiedUpi ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          {screenshotFile ? (
+                            <>
+                              <FileCheck className="w-4 h-4 text-emerald-400" />
+                              <span className="text-emerald-400 font-semibold truncate max-w-[200px]">
+                                {screenshotFile.name}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <UploadCloud className="w-4 h-4 text-purple-400" />
+                              <span>Upload PhonePe Confirmation Screenshot</span>
+                            </>
+                          )}
                         </button>
                       </div>
-                    </div>
 
-                    {/* Direct UPI Apps Selector */}
-                    <div className="space-y-3">
-                      <label className="block text-xs font-semibold text-[#94A3B8] uppercase tracking-wider">
-                        One-Click Pay with UPI App
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { id: 'phonepe', name: 'PhonePe', color: '#5F259F' },
-                          { id: 'gpay', name: 'Google Pay', color: '#4285F4' },
-                          { id: 'paytm', name: 'Paytm UPI', color: '#00BAF2' },
-                          { id: 'cred', name: 'CRED UPI', color: '#E8A735' },
-                        ].map((app) => (
-                          <button
-                            key={app.id}
-                            type="button"
-                            onClick={() => setSelectedUpiApp(app.id)}
-                            className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all ${
-                              selectedUpiApp === app.id
-                                ? 'bg-emerald-500/15 border-emerald-500/50 text-white'
-                                : 'bg-[#0E1716] border-white/[0.06] text-[#94A3B8] hover:text-white'
-                            }`}
-                          >
-                            <span
-                              className="w-3 h-3 rounded-full"
-                              style={{ backgroundColor: app.color }}
-                            />
-                            <span>{app.name}</span>
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="pt-2">
-                        <label className="block text-[11px] text-[#94A3B8] mb-1">
-                          Or Enter Custom UPI ID (VPA)
-                        </label>
-                        <input
-                          type="text"
-                          value={customUpiId}
-                          onChange={(e) => setCustomUpiId(e.target.value)}
-                          placeholder="e.g. yourname@okaxis"
-                          className="w-full px-3 py-2 rounded-xl glass-input text-xs"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 2: CREDIT / DEBIT CARDS */}
-              {activeTab === 'card' && (
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="text-sm font-bold text-white">Credit &amp; Debit Cards</h4>
-                    <p className="text-xs text-[#94A3B8] mt-0.5">
-                      Payment processed via merchant gateway directly into {merchantDetails.bankName}.
-                    </p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-[#94A3B8] uppercase tracking-wider mb-1.5">
-                        Card Number
-                      </label>
-                      <input
-                        type="text"
-                        value={cardNumber}
-                        onChange={(e) => setCardNumber(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl glass-input text-sm font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-[#94A3B8] uppercase tracking-wider mb-1.5">
-                        Cardholder Name
-                      </label>
-                      <input
-                        type="text"
-                        value={cardHolder}
-                        onChange={(e) => setCardHolder(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl glass-input text-sm"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-[#94A3B8] uppercase tracking-wider mb-1.5">
-                          Expiry Date
-                        </label>
-                        <input
-                          type="text"
-                          value={cardExpiry}
-                          onChange={(e) => setCardExpiry(e.target.value)}
-                          className="w-full px-3.5 py-2.5 rounded-xl glass-input text-sm font-mono"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-[#94A3B8] uppercase tracking-wider mb-1.5">
-                          CVV
-                        </label>
-                        <input
-                          type="password"
-                          value={cardCvv}
-                          onChange={(e) => setCardCvv(e.target.value)}
-                          maxLength={4}
-                          className="w-full px-3.5 py-2.5 rounded-xl glass-input text-sm font-mono"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 3: DIRECT OWNER BANK TRANSFER (IMPS / NEFT) */}
-              {activeTab === 'netbanking' && (
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="text-sm font-bold text-white">Direct Owner Bank Account Transfer</h4>
-                    <p className="text-xs text-[#94A3B8] mt-0.5">
-                      Send payment directly to the owner's bank account via IMPS/NEFT or Net Banking.
-                    </p>
-                  </div>
-
-                  {/* Owner Verified Bank Account Details Card */}
-                  <div className="p-4 rounded-xl bg-[#0E1716] border border-emerald-500/30 space-y-2.5 text-xs">
-                    <div className="flex items-center justify-between border-b border-white/[0.06] pb-2">
-                      <span className="font-bold text-emerald-400 uppercase text-[10px] tracking-wider">
-                        Owner Bank Account Details
-                      </span>
+                      {/* Verify Button */}
                       <button
                         type="button"
-                        onClick={() =>
-                          copyToClipboard(
-                            `A/C: ${merchantDetails.accountNumber}, IFSC: ${merchantDetails.ifscCode}, Name: ${merchantDetails.accountHolderName}`,
-                            'bank'
-                          )
-                        }
-                        className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-semibold"
+                        onClick={handleVerifyAndSubmitPayment}
+                        className="w-full py-3 px-4 rounded-xl bg-[#22C55E] hover:bg-[#16A34A] text-black font-extrabold text-sm flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(34,197,94,0.35)] active:scale-95 mt-1"
                       >
-                        {copiedBank ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                        <span>Copy All Details</span>
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>I Have Paid ₹{amount} • Verify &amp; Confirm Order</span>
                       </button>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-3 text-xs">
-                      <div>
-                        <span className="text-[10px] text-[#94A3B8] block">Account Name:</span>
-                        <span className="text-white font-semibold">{merchantDetails.accountHolderName}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-[#94A3B8] block">Bank Name:</span>
-                        <span className="text-white font-semibold">{merchantDetails.bankName}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-[#94A3B8] block">Account Number:</span>
-                        <span className="text-amber-300 font-mono font-bold">{merchantDetails.accountNumber}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-[#94A3B8] block">IFSC Code:</span>
-                        <span className="text-white font-mono">{merchantDetails.ifscCode}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-[#94A3B8] uppercase tracking-wider mb-1.5">
-                      Select Your Net Banking Portal
-                    </label>
-                    <select
-                      value={selectedBank}
-                      onChange={(e) => setSelectedBank(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl glass-input text-xs cursor-pointer"
-                    >
-                      {indianBanks.map((bank) => (
-                        <option key={bank.id} value={bank.id} className="bg-[#162321]">
-                          {bank.name} ({bank.code})
-                        </option>
-                      ))}
-                    </select>
                   </div>
                 </div>
               )}
 
-              {/* TAB 4: CAMPUS CASH / COD */}
+              {/* TAB 2: RAZORPAY GATEWAY */}
+              {activeTab === 'razorpay' && (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Razorpay Online Payment Gateway</h4>
+                    <p className="text-xs text-[#94A3B8] mt-0.5">
+                      Pay via Credit/Debit Cards (Visa, MasterCard, RuPay) or 50+ Indian Net Banking portals.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-[#0E1716] border border-white/[0.08] space-y-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[#94A3B8]">Merchant Settlement:</span>
+                      <span className="text-white font-bold">{phonePeMerchant.name}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[#94A3B8]">Payable Amount:</span>
+                      <span className="text-base font-mono font-bold text-[#FACC15]">₹{amount}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[#94A3B8]">Supported:</span>
+                      <span className="text-emerald-400">All Indian Debit/Credit Cards &amp; NetBanking</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleVerifyAndSubmitPayment}
+                    className="w-full py-3 px-4 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md"
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    <span>Pay ₹{amount} via Razorpay Gateway</span>
+                  </button>
+                </div>
+              )}
+
+              {/* TAB 3: CAMPUS CASH */}
               {activeTab === 'campus_cash' && (
                 <div className="space-y-4">
                   <div>
-                    <h4 className="text-sm font-bold text-white">Campus Cash &amp; Pay at Counter</h4>
+                    <h4 className="text-sm font-bold text-white">SRM AP Campus Cash (RFID)</h4>
                     <p className="text-xs text-[#94A3B8] mt-0.5">
-                      Use your official SRM AP Student ID RFID balance or pay cash when collecting.
+                      Deduct from your student ID card wallet balance.
                     </p>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950/40 to-[#0E1716] border border-emerald-500/30 space-y-2">
+                  <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950/40 to-[#0E1716] border border-emerald-500/30 space-y-2 text-xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
-                        Student ID Card Verified
+                      <span className="font-bold text-emerald-400">Student ID: {user.regNumber}</span>
+                      <span className="font-mono text-white">{user.name}</span>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]">
+                      <span className="text-[#94A3B8]">Available Balance:</span>
+                      <span className="text-lg font-mono font-bold text-[#22C55E]">
+                        ₹{user.campusCashBalance}
                       </span>
-                      <span className="text-xs font-mono text-white">{user.regNumber}</span>
-                    </div>
-                    <div className="flex items-baseline justify-between pt-1">
-                      <div>
-                        <div className="text-sm font-bold text-white">{user.name}</div>
-                        <div className="text-xs text-[#94A3B8]">{user.department}</div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-[#94A3B8] block">Available Balance</span>
-                        <span className="text-lg font-mono font-extrabold text-[#22C55E]">
-                          ₹{user.campusCashBalance}
-                        </span>
-                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setCampusPaymentType('campus_wallet')}
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        campusPaymentType === 'campus_wallet'
-                          ? 'bg-emerald-500/15 border-emerald-500/50 text-white'
-                          : 'bg-[#0E1716] border-white/[0.06] text-[#94A3B8] hover:text-white'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-white">Campus Cash Debit</span>
-                        {campusPaymentType === 'campus_wallet' && (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                        )}
-                      </div>
-                      <div className="text-[11px] text-[#94A3B8] mt-1">
-                        Deducts ₹{amount} instantly from ID RFID wallet.
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setCampusPaymentType('cod')}
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        campusPaymentType === 'cod'
-                          ? 'bg-emerald-500/15 border-emerald-500/50 text-white'
-                          : 'bg-[#0E1716] border-white/[0.06] text-[#94A3B8] hover:text-white'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-white">Pay at Counter (COD)</span>
-                        {campusPaymentType === 'cod' && (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                        )}
-                      </div>
-                      <div className="text-[11px] text-[#94A3B8] mt-1">
-                        Pay cash directly to xerox operator at pickup.
-                      </div>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleVerifyAndSubmitPayment}
+                    className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md"
+                  >
+                    <Wallet className="w-4 h-4" />
+                    <span>Pay ₹{amount} using Campus Cash</span>
+                  </button>
                 </div>
               )}
-
-              {/* Bottom Payment Button */}
-              <div className="pt-6 mt-6 border-t border-white/[0.08] flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2 text-xs text-[#94A3B8]">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Direct Credit to {merchantDetails.accountHolderName}</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleExecutePayment}
-                  className="px-6 py-3 rounded-xl bg-[#22C55E] hover:bg-[#16A34A] text-black font-extrabold text-sm flex items-center gap-2 transition-all shadow-[0_0_20px_rgba(34,197,94,0.35)] hover:shadow-[0_0_25px_rgba(34,197,94,0.5)] active:scale-95"
-                >
-                  <span>Pay ₹{amount}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
             </div>
           </div>
         )}

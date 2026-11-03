@@ -1,6 +1,7 @@
 import React from 'react';
-import { X, Printer, Download, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { X, Printer, Download, CheckCircle2, ShieldCheck, QrCode } from 'lucide-react';
 import { PrintOrder, UserProfile } from '../types';
+import { phonePeMerchant } from '../data/mockData';
 
 interface ReceiptModalProps {
   order: PrintOrder | null;
@@ -70,10 +71,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 Central Library Xerox &amp; Reprographic Centre
               </p>
               <p className="text-[11px] text-[#94A3B8]">
-                Neerukonda, Mangalagiri Mandal, Andhra Pradesh 522240
+                Payee: <strong className="text-white">{phonePeMerchant.name}</strong> ({phonePeMerchant.vpa})
               </p>
               <p className="text-[10px] text-emerald-400/80 font-mono mt-0.5">
-                GSTIN: 37AAAAU0000A1Z5
+                GSTIN: 37AAAAU0000A1Z5 • PhonePe Merchant Gateway
               </p>
             </div>
 
@@ -109,7 +110,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 </span>
               </div>
               <div className="text-[10px] text-emerald-400 font-medium">
-                Payment: {order.paymentMethod || 'UPI Paid'}
+                UTR: {order.utrNumber || '330491829012'}
               </div>
             </div>
           </div>
@@ -177,9 +178,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           <div className="pt-4 border-t border-white/[0.08] flex items-center justify-between text-[11px]">
             <div className="flex items-center gap-1.5 text-emerald-400">
               <ShieldCheck className="w-4 h-4" />
-              <span>Computer-generated official student reprographics voucher.</span>
+              <span>Verified PhonePe UPI Transaction (Payee: {phonePeMerchant.name})</span>
             </div>
-            <span>Help: reprographics@srmap.edu.in</span>
+            <span>reprographics@srmap.edu.in</span>
           </div>
         </div>
       </div>
