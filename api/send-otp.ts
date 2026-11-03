@@ -149,14 +149,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    if (!emailDelivered) {
+      console.warn(`[Send OTP] No live email provider active. Email to ${cleanEmail} could not be dispatched.`);
+      return res.status(503).json({
+        error:
+          'Live email dispatcher key is not yet set in backend environment variables. Please provide your Resend API Key or Gmail App Password so real emails can be dispatched.',
+        emailDelivered: false
+      });
+    }
+
     return res.status(200).json({
       success: true,
-      message: `OTP has been dispatched to ${cleanEmail}. Please check your inbox.`,
+      message: `Verification OTP has been dispatched to ${cleanEmail}. Please check your email inbox.`,
       email: cleanEmail,
       token,
       expiresAt,
-      emailDelivered,
-      previewOtp: !emailDelivered ? otp : undefined,
+      emailDelivered: true,
       providerUsed
     });
   } catch (error: any) {

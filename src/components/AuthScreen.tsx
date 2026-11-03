@@ -24,7 +24,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   const [successInfo, setSuccessInfo] = useState('');
   const [otpToken, setOtpToken] = useState<string>('');
   const [otpExpiresAt, setOtpExpiresAt] = useState<number>(0);
-  const [fallbackOtp, setFallbackOtp] = useState<string>('');
 
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -37,7 +36,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
     return () => clearInterval(interval);
   }, [step, resendTimer]);
 
-  // Step 1: Send OTP to Real Email (Accept any valid email: Gmail, Outlook, Yahoo, SRM, etc.)
+  // Step 1: Send Real OTP to Email
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEmail = email.trim().toLowerCase();
@@ -56,7 +55,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
     setIsLoading(true);
     setError('');
     setSuccessInfo('');
-    setFallbackOtp('');
 
     try {
       const response = await fetch('/api/send-otp', {
@@ -75,12 +73,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
       setResendTimer(60);
       setOtpToken(data.token || '');
       setOtpExpiresAt(data.expiresAt || 0);
-      setSuccessInfo(`Verification OTP dispatched to ${cleanEmail}. Check your inbox.`);
+      setSuccessInfo(`Real verification OTP sent to ${cleanEmail}. Please check your email inbox.`);
       setOtpValues(['', '', '', '', '', '']);
-
-      if (data.previewOtp) {
-        setFallbackOtp(data.previewOtp);
-      }
 
       setTimeout(() => {
         otpInputRefs.current[0]?.focus();
@@ -129,7 +123,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
     e.preventDefault();
     const enteredCode = otpValues.join('');
     if (enteredCode.length < 6) {
-      setError('Please enter the complete 6-digit code sent to your email.');
+      setError('Please enter the complete 6-digit code received in your email.');
       return;
     }
 
@@ -185,18 +179,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
       <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-[140px] pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-purple-500/10 rounded-full blur-[160px] pointer-events-none" />
 
-      {/* LEFT SIDE: SRM University AP Landmark Photography (Replaces former text block) */}
-      <div className="relative flex-1 hidden lg:flex flex-col justify-between p-8 xl:p-12 overflow-hidden border-r border-white/[0.08]">
-        {/* Subtle blurred ambient backdrop using the campus photo */}
+      {/* LEFT SIDE: Full-Bleed SRM AP Campus Architecture */}
+      <div className="relative flex-1 hidden lg:flex flex-col justify-between p-10 xl:p-14 overflow-hidden border-r border-white/[0.08]">
+        {/* Full-bleed background high-res campus image */}
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-15 blur-2xl scale-110"
-          style={{ backgroundImage: `url('/srm-campus-building.png')` }}
+          className="absolute inset-0 bg-cover bg-center transition-transform duration-1000 scale-100 hover:scale-105"
+          style={{ backgroundImage: `url('/srm-campus-hero.jpg')` }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0B1313] via-[#0B1313]/85 to-[#0B1313]/90" />
+        {/* Dark academic glass gradient overlays */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0B1313] via-[#0B1313]/60 to-[#0B1313]/85" />
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#0B1313]/30 to-[#0B1313]" />
 
         {/* Top Header */}
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500/30 to-emerald-400/10 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-glass">
+          <div className="w-12 h-12 rounded-2xl bg-[#0B1313]/80 backdrop-blur-md border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-glass">
             <Printer className="w-6 h-6 text-[#22C55E]" />
           </div>
           <div>
@@ -212,24 +208,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
           </div>
         </div>
 
-        {/* Middle: SRM AP Official Building Landmark Image */}
-        <div className="relative z-10 my-auto flex flex-col items-center justify-center py-6">
-          <div className="relative rounded-2xl overflow-hidden border border-white/[0.12] shadow-[0_20px_50px_rgba(0,0,0,0.6)] bg-[#162321]/40 backdrop-blur-md max-w-[430px] w-full transition-transform duration-300 hover:scale-[1.01]">
-            <img
-              src="/srm-campus-building.png"
-              alt="SRM University AP Amaravati Campus Building"
-              className="w-full h-auto object-cover rounded-2xl block"
-            />
+        {/* Bottom Status & Info */}
+        <div className="relative z-10 space-y-4">
+          <div className="p-4 rounded-2xl bg-[#0B1313]/70 border border-white/[0.1] backdrop-blur-md max-w-md">
+            <p className="text-sm font-semibold text-white">Central Reprographic &amp; Print Facility</p>
+            <p className="text-xs text-[#94A3B8] mt-1">High-speed color &amp; monochrome digital xerox, thesis binding, and document pickup.</p>
           </div>
-        </div>
-
-        {/* Bottom Status */}
-        <div className="relative z-10 flex items-center justify-between text-xs text-[#94A3B8] border-t border-white/[0.08] pt-4">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Central Library Reprographic Hub • Active</span>
+          <div className="flex items-center justify-between text-xs text-[#94A3B8] border-t border-white/[0.08] pt-4">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Library Counters Active</span>
+            </div>
+            <span>Academic Portal</span>
           </div>
-          <span>Student Portal</span>
         </div>
       </div>
 
@@ -248,7 +239,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
             </h2>
             <p className="text-xs text-[#94A3B8] mt-1">
               {step === 'email'
-                ? 'Enter your active email address to receive your OTP verification code'
+                ? 'Enter your email address to receive your OTP verification code'
                 : `Enter the 6-digit OTP sent to ${email}`}
             </p>
           </div>
@@ -267,7 +258,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
             </div>
           )}
 
-          {/* STEP 1: ENTER ANY VALID EMAIL (GMAIL, YAHOO, OUTLOOK, SRM AP, ETC.) */}
+          {/* STEP 1: ENTER ANY VALID EMAIL */}
           {step === 'email' && (
             <form onSubmit={handleSendOtp} className="space-y-4">
               <div>
@@ -309,7 +300,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
             </form>
           )}
 
-          {/* STEP 2: ENTER OTP (PASTE FROM EMAIL INBOX) */}
+          {/* STEP 2: ENTER OTP (PASTE FROM REAL EMAIL INBOX) */}
           {step === 'otp' && (
             <form onSubmit={handleVerifyOtp} className="space-y-5">
               <div>
@@ -352,21 +343,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                   Paste or type the 6-digit code received in your inbox.
                 </p>
               </div>
-
-              {fallbackOtp && (
-                <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center justify-between">
-                  <span>Demo Relay Code: <strong className="font-mono text-amber-300">{fallbackOtp}</strong></span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOtpValues(fallbackOtp.split(''));
-                    }}
-                    className="text-[11px] underline hover:text-white"
-                  >
-                    Auto-fill
-                  </button>
-                </div>
-              )}
 
               {/* Resend Countdown */}
               <div className="flex items-center justify-between text-xs text-[#94A3B8]">
