@@ -3,15 +3,10 @@ import {
   Printer,
   Mail,
   ArrowRight,
-  ShieldCheck,
   AlertCircle,
-  KeyRound,
   RotateCcw,
   Send,
-  CheckCircle2,
-  Settings,
-  ChevronDown,
-  ChevronUp
+  CheckCircle2
 } from 'lucide-react';
 import { UserProfile } from '../types';
 
@@ -27,11 +22,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [successInfo, setSuccessInfo] = useState('');
-
-  // Email Provider Settings (Optional Custom Key)
-  const [showConfig, setShowConfig] = useState(false);
-  const [resendKey, setResendKey] = useState(() => localStorage.getItem('srm_resend_key') || '');
-  const [savedKeyToast, setSavedKeyToast] = useState(false);
+  const [otpToken, setOtpToken] = useState<string>('');
+  const [otpExpiresAt, setOtpExpiresAt] = useState<number>(0);
+  const [fallbackOtp, setFallbackOtp] = useState<string>('');
 
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -44,14 +37,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
     return () => clearInterval(interval);
   }, [step, resendTimer]);
 
-  const handleSaveResendKey = (e: React.FormEvent) => {
-    e.preventDefault();
-    localStorage.setItem('srm_resend_key', resendKey.trim());
-    setSavedKeyToast(true);
-    setTimeout(() => setSavedKeyToast(false), 2500);
-  };
-
-  // Step 1: Send OTP to Real Email
+  // Step 1: Send OTP to Real Email (Accept any valid email: Gmail, Outlook, Yahoo, SRM, etc.)
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEmail = email.trim().toLowerCase();
@@ -63,22 +49,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
 
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(cleanEmail)) {
-      setError('Please enter a valid email address (e.g. name@domain.com).');
+      setError('Please enter a valid email address (e.g. name@gmail.com).');
       return;
     }
 
     setIsLoading(true);
     setError('');
     setSuccessInfo('');
+    setFallbackOtp('');
 
     try {
       const response = await fetch('/api/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: cleanEmail,
-          resendKey: resendKey.trim() || undefined
-        })
+        body: JSON.stringify({ email: cleanEmail })
       });
 
       const data = await response.json();
@@ -89,8 +73,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
 
       setStep('otp');
       setResendTimer(60);
+      setOtpToken(data.token || '');
+      setOtpExpiresAt(data.expiresAt || 0);
       setSuccessInfo(`Verification OTP dispatched to ${cleanEmail}. Check your inbox.`);
       setOtpValues(['', '', '', '', '', '']);
+
+      if (data.previewOtp) {
+        setFallbackOtp(data.previewOtp);
+      }
 
       setTimeout(() => {
         otpInputRefs.current[0]?.focus();
@@ -152,7 +142,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
-          otp: enteredCode
+          otp: enteredCode,
+          token: otpToken,
+          expiresAt: otpExpiresAt
         })
       });
 
@@ -193,17 +185,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
       <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-[140px] pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-purple-500/10 rounded-full blur-[160px] pointer-events-none" />
 
-      {/* LEFT SIDE: Campus Photography & Information */}
-      <div className="relative flex-1 hidden lg:flex flex-col justify-between p-12 overflow-hidden border-r border-white/[0.08]">
+      {/* LEFT SIDE: SRM University AP Landmark Photography (Replaces former text block) */}
+      <div className="relative flex-1 hidden lg:flex flex-col justify-between p-8 xl:p-12 overflow-hidden border-r border-white/[0.08]">
+        {/* Subtle blurred ambient backdrop using the campus photo */}
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-luminosity scale-105"
-          style={{
-            backgroundImage: `url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=1800&q=80')`
-          }}
+          className="absolute inset-0 bg-cover bg-center opacity-15 blur-2xl scale-110"
+          style={{ backgroundImage: `url('/srm-campus-building.png')` }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0B1313] via-[#0B1313]/70 to-[#0B1313]/90" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0B1313] via-[#0B1313]/85 to-[#0B1313]/90" />
 
-        {/* Top Branding */}
+        {/* Top Header */}
         <div className="relative z-10 flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500/30 to-emerald-400/10 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-glass">
             <Printer className="w-6 h-6 text-[#22C55E]" />
@@ -221,44 +212,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
           </div>
         </div>
 
-        {/* Middle Feature Highlights */}
-        <div className="relative z-10 my-auto max-w-lg space-y-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
-            <KeyRound className="w-3.5 h-3.5" />
-            Real-Time Verified Email OTP Authentication
-          </div>
-
-          <h3 className="text-4xl font-extrabold text-white leading-tight tracking-tight">
-            Order your prints online. <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-amber-300">
-              Pay via PhonePe like Flipkart &amp; Myntra.
-            </span>
-          </h3>
-
-          <p className="text-[#94A3B8] text-base leading-relaxed">
-            Enter your active email address to receive an official 6-digit one-time password. Scan the PhonePe QR code or tap to pay directly on mobile.
-          </p>
-
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <div className="p-3.5 rounded-xl bg-[#162321]/80 border border-white/[0.08] backdrop-blur-md">
-              <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm mb-1">
-                <Mail className="w-4 h-4" />
-                <span>Real Email Verification</span>
-              </div>
-              <p className="text-xs text-[#94A3B8]">
-                Domain validation &amp; active mail server verification.
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-[#162321]/80 border border-white/[0.08] backdrop-blur-md">
-              <div className="flex items-center gap-2 text-purple-400 font-semibold text-sm mb-1">
-                <ShieldCheck className="w-4 h-4" />
-                <span>PhonePe Direct Pay</span>
-              </div>
-              <p className="text-xs text-[#94A3B8]">
-                Live merchant transfer to BUDATI THARUN ABHAY.
-              </p>
-            </div>
+        {/* Middle: SRM AP Official Building Landmark Image */}
+        <div className="relative z-10 my-auto flex flex-col items-center justify-center py-6">
+          <div className="relative rounded-2xl overflow-hidden border border-white/[0.12] shadow-[0_20px_50px_rgba(0,0,0,0.6)] bg-[#162321]/40 backdrop-blur-md max-w-[430px] w-full transition-transform duration-300 hover:scale-[1.01]">
+            <img
+              src="/srm-campus-building.png"
+              alt="SRM University AP Amaravati Campus Building"
+              className="w-full h-auto object-cover rounded-2xl block"
+            />
           </div>
         </div>
 
@@ -287,7 +248,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
             </h2>
             <p className="text-xs text-[#94A3B8] mt-1">
               {step === 'email'
-                ? 'Enter your real email address to receive your OTP verification code'
+                ? 'Enter your active email address to receive your OTP verification code'
                 : `Enter the 6-digit OTP sent to ${email}`}
             </p>
           </div>
@@ -306,7 +267,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
             </div>
           )}
 
-          {/* STEP 1: ENTER REAL EMAIL */}
+          {/* STEP 1: ENTER ANY VALID EMAIL (GMAIL, YAHOO, OUTLOOK, SRM AP, ETC.) */}
           {step === 'email' && (
             <form onSubmit={handleSendOtp} className="space-y-4">
               <div>
@@ -321,13 +282,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="e.g. yourname@srmap.edu.in or yourname@gmail.com"
+                    placeholder="e.g. name@gmail.com, student@srmap.edu.in"
                     required
                     className="w-full pl-10 pr-4 py-3 rounded-xl glass-input text-sm"
                   />
                 </div>
                 <p className="text-[11px] text-[#94A3B8]/70 mt-1.5">
-                  We verify domain active MX records before sending the one-time password.
+                  Accepts any active email domain (Gmail, Yahoo, Outlook, SRM AP, etc.).
                 </p>
               </div>
 
@@ -348,7 +309,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
             </form>
           )}
 
-          {/* STEP 2: ENTER OTP (PASTE FROM REAL EMAIL INBOX) */}
+          {/* STEP 2: ENTER OTP (PASTE FROM EMAIL INBOX) */}
           {step === 'otp' && (
             <form onSubmit={handleVerifyOtp} className="space-y-5">
               <div>
@@ -392,6 +353,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                 </p>
               </div>
 
+              {fallbackOtp && (
+                <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center justify-between">
+                  <span>Demo Relay Code: <strong className="font-mono text-amber-300">{fallbackOtp}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOtpValues(fallbackOtp.split(''));
+                    }}
+                    className="text-[11px] underline hover:text-white"
+                  >
+                    Auto-fill
+                  </button>
+                </div>
+              )}
+
               {/* Resend Countdown */}
               <div className="flex items-center justify-between text-xs text-[#94A3B8]">
                 <span>Didn't receive code?</span>
@@ -427,50 +403,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
               </button>
             </form>
           )}
-
-          {/* Optional: Configure Custom Email Dispatcher (e.g. Resend / SMTP) */}
-          <div className="mt-6 pt-4 border-t border-white/[0.08]">
-            <button
-              type="button"
-              onClick={() => setShowConfig(!showConfig)}
-              className="w-full flex items-center justify-between text-[11px] text-[#94A3B8] hover:text-white"
-            >
-              <span className="flex items-center gap-1">
-                <Settings className="w-3 h-3" />
-                <span>Configure Live Email Gateway Key (Optional)</span>
-              </span>
-              {showConfig ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            </button>
-
-            {showConfig && (
-              <form onSubmit={handleSaveResendKey} className="mt-3 p-3 rounded-xl bg-[#0E1716] border border-white/[0.06] space-y-2 text-xs">
-                <div>
-                  <label className="block text-[10px] text-[#94A3B8] uppercase">
-                    Resend API Key (`re_...`) or SMTP Config
-                  </label>
-                  <input
-                    type="password"
-                    value={resendKey}
-                    onChange={(e) => setResendKey(e.target.value)}
-                    placeholder="re_123456789..."
-                    className="w-full px-2.5 py-1.5 rounded-lg glass-input text-xs font-mono mt-1"
-                  />
-                  <p className="text-[10px] text-[#94A3B8]/70 mt-1">
-                    Free from <a href="https://resend.com" target="_blank" rel="noreferrer" className="text-emerald-400 underline">resend.com</a> to dispatch directly from your domain.
-                  </p>
-                </div>
-                <div className="flex items-center justify-between pt-1">
-                  {savedKeyToast && <span className="text-[10px] text-emerald-400">Key saved!</span>}
-                  <button
-                    type="submit"
-                    className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold text-xs ml-auto"
-                  >
-                    Save Key
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
         </div>
       </div>
     </div>

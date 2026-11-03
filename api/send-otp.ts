@@ -1,10 +1,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import dns from 'dns';
+import crypto from 'crypto';
 import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
 
+const OTP_SECRET = process.env.OTP_SECRET || 'srm-campus-print-otp-secret-key-2026';
+
+function generateOtpToken(email: string, otp: string, expiresAt: number): string {
+  return crypto.createHmac('sha256', OTP_SECRET).update(`${email}:${otp}:${expiresAt}`).digest('hex');
+}
+
 // In-memory store for OTPs (keyed by lowercase email)
-// Maps email -> { otp: string; expiresAt: number }
 declare global {
   var __otpStore: Map<string, { otp: string; expiresAt: number }> | undefined;
 }
@@ -61,6 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 2. Generate secure 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes validity
+    const token = generateOtpToken(cleanEmail, otp, expiresAt);
 
     otpStore.set(cleanEmail, { otp, expiresAt });
 
@@ -146,10 +153,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: true,
       message: `OTP has been dispatched to ${cleanEmail}. Please check your inbox.`,
       email: cleanEmail,
+      token,
+      expiresAt,
       emailDelivered,
-      providerUsed,
-      // For developer setup or when keys are being connected, return status
-      requiresKey: !emailDelivered
+      previewOtp: !emailDelivered ? otp : undefined,
+      providerUsed
     });
   } catch (error: any) {
     console.error('Send OTP Handler Error:', error);
