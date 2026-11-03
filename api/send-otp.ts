@@ -83,45 +83,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let emailDelivered = false;
     let providerUsed = 'none';
+    let resendErrorMessage = '';
 
-    // Provider A: Resend API
-    if (activeResendKey) {
-      try {
-        const resend = new Resend(activeResendKey);
-        const { data: resData, error: resErr } = await resend.emails.send({
-          from: 'SRM AP Print Hub <onboarding@resend.dev>',
-          to: [cleanEmail],
-          subject: `${otp} is your SRM AP Print Hub verification code`,
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; background: #0B1313; color: #F8FAFC; border-radius: 12px; border: 1px solid #22C55E;">
-              <h2 style="color: #22C55E; margin-bottom: 8px;">SRM University AP</h2>
-              <p style="color: #94A3B8; font-size: 14px;">Campus Print & Pickup Booking System</p>
-              <hr style="border: 0; border-top: 1px solid #162321; margin: 20px 0;" />
-              <p style="font-size: 14px;">Your one-time login verification code is:</p>
-              <div style="background: #162321; padding: 16px; border-radius: 8px; text-align: center; margin: 20px 0; border: 1px dashed #FACC15;">
-                <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #FACC15; font-family: monospace;">${otp}</span>
-              </div>
-              <p style="font-size: 12px; color: #94A3B8;">This code will expire in 10 minutes. If you did not request this, please ignore this email.</p>
-            </div>
-          `
-        });
-        if (resErr) {
-          console.error('Resend delivery error:', resErr);
-        } else if (resData) {
-          emailDelivered = true;
-          providerUsed = 'Resend';
-        }
-      } catch (err: any) {
-        console.error('Resend delivery error:', err);
-      }
-    }
-
-    // Provider B: SMTP (Nodemailer)
-    if (!emailDelivered && activeSmtp) {
+    // Provider A: SMTP (Nodemailer - supports sending to ANY email address in the world!)
+    if (activeSmtp) {
       try {
         const transporter = nodemailer.createTransport({
-          host: activeSmtp.host,
-          port: activeSmtp.port,
+          host: activeSmtp.host || 'smtp.gmail.com',
+          port: activeSmtp.port || 465,
           secure: activeSmtp.secure !== false,
           auth: {
             user: activeSmtp.user,
@@ -153,11 +122,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // Provider B: Resend API
+    if (!emailDelivered && activeResendKey) {
+      try {
+        const resend = new Resend(activeResendKey);
+        const { data: resData, error: resErr } = await resend.emails.send({
+          from: 'SRM AP Print Hub <onboarding@resend.dev>',
+          to: [cleanEmail],
+          subject: `${otp} is your SRM AP Print Hub verification code`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; background: #0B1313; color: #F8FAFC; border-radius: 12px; border: 1px solid #22C55E;">
+              <h2 style="color: #22C55E; margin-bottom: 8px;">SRM University AP</h2>
+              <p style="color: #94A3B8; font-size: 14px;">Campus Print & Pickup Booking System</p>
+              <hr style="border: 0; border-top: 1px solid #162321; margin: 20px 0;" />
+              <p style="font-size: 14px;">Your one-time login verification code is:</p>
+              <div style="background: #162321; padding: 16px; border-radius: 8px; text-align: center; margin: 20px 0; border: 1px dashed #FACC15;">
+                <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #FACC15; font-family: monospace;">${otp}</span>
+              </div>
+              <p style="font-size: 12px; color: #94A3B8;">This code will expire in 10 minutes. If you did not request this, please ignore this email.</p>
+            </div>
+          `
+        });
+        if (resErr) {
+          console.error('Resend delivery error:', resErr);
+          resendErrorMessage = resErr.message || '';
+        } else if (resData) {
+          emailDelivered = true;
+          providerUsed = 'Resend';
+        }
+      } catch (err: any) {
+        console.error('Resend delivery error:', err);
+      }
+    }
+
     if (!emailDelivered) {
-      console.warn(`[Send OTP] No live email provider active. Email to ${cleanEmail} could not be dispatched.`);
-      return res.status(503).json({
-        error:
-          'Live email dispatcher key is not yet set in backend environment variables. Please provide your Resend API Key or Gmail App Password so real emails can be dispatched.',
+      let userFriendlyError = 'Email delivery failed.';
+      if (resendErrorMessage.includes('only send testing emails to your own email address')) {
+        userFriendlyError = `Resend Sandbox currently only permits sending to the registered account email. To enable sending OTPs to ANY student/email address in the world, please connect Gmail SMTP App Password.`;
+      } else if (resendErrorMessage) {
+        userFriendlyError = resendErrorMessage;
+      } else {
+        userFriendlyError = 'Live email dispatcher key is not set. Please provide credentials.';
+      }
+
+      console.warn(`[Send OTP] Email to ${cleanEmail} failed. Reason: ${userFriendlyError}`);
+      return res.status(403).json({
+        error: userFriendlyError,
         emailDelivered: false
       });
     }
